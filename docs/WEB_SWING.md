@@ -24,21 +24,36 @@ permite testar a matemática diretamente, sem simular o motor.
 
 ## A física do balanço
 
-Modelo: **pêndulo com corda inextensível**.
+Modelo: **pêndulo com corda**, com duas correções que fazem o balanço parecer
+teia em vez de haste de metal.
 
 A cada passo de física, depois da gravidade e antes do `move_and_slide`:
 
-1. O jogador é reposicionado sobre uma esfera de raio igual ao comprimento da
-   teia em volta da ancoragem.
-2. A componente da velocidade que aponta **para fora** dessa esfera é removida.
+1. Se o jogador está **dentro** do raio da corda (comprimento + folga), a corda
+   está frouxa e **nada acontece** — só a gravidade age.
+2. Ao atingir o limite, a posição é corrigida para a esfera e a componente de
+   afastamento da velocidade é absorvida.
 
-A segunda etapa é o que faz a corda se comportar como corda: ela **não empurra**.
-A componente que aponta para dentro da esfera é preservada, então o jogador pode
-cair e balançar livremente na direção da ancoragem.
+A primeira etapa é o que dá a sensação de queda livre no início do balanço. A
+segunda é o que faz a corda se comportar como corda: ela **não empurra**, e a
+componente que aponta para dentro é preservada.
 
 A gravidade continua sendo aplicada pelo controlador, todo quadro. É ela que
 acelera o jogador ao longo do arco. Nada disso é animação: o movimento sai
 inteiramente da integração da física.
+
+### O arco não pode atravessar o chão
+
+O fundo do arco é `anchor.y - comprimento`. Se isso ficar abaixo do piso, o
+jogador é **arrastado pelo chão** em vez de balançar — foi exatamente o defeito
+relatado. `WebPhysics.safe_length()` encurta a corda para o arco caber acima do
+piso, com folga de 1,6 m. O piso é medido por um raio para baixo, o que funciona
+também no ar (ao disparar depois de saltar de um telhado).
+
+### A corda gira em volta do corpo
+
+A restrição é aplicada ao **centro do corpo**, não aos pés. Pendurar pelo pé
+fazia o personagem raspar no chão durante todo o arco.
 
 ### O que decorre do modelo, sem código extra
 
@@ -102,22 +117,35 @@ impedindo a câmera de atravessar paredes.
 
 | Ação | Toque | Teclado |
 | --- | --- | --- |
-| Disparar teia | botão **Teia** | `E` |
-| Soltar teia | botão **Soltar** | `Q` |
+| Teia (segurar/soltar) | botão **TEIA** | `E` |
 | Recolher / afrouxar | controle deslizante | `R` / `F` |
+
+O botão de teia funciona por **segurar**: pressionar dispara e mantém a teia
+presa; soltar libera. Um botão só.
 
 O controle deslizante vale −1 (afrouxar), 0 (manter) e +1 (recolher).
 
 ## Animação
 
-O rig não tem clipes de disparo ou balanço. Em vez de inventar animação, o
-sistema aplica um **ajuste procedural discreto** por cima do clipe em execução:
-tronco inclinado 14° e pernas levemente recolhidas, entrando e saindo suavemente
-(`swing_pose_blend_speed`). Os valores são baixos de propósito.
+### Braços caídos
 
-O rig **não é alterado em disco** — a pose é escrita em memória, no
-`Skeleton3D`, a cada quadro. Quando existirem clipes de balanço de verdade,
-basta trocá-los aqui.
+O rig de repouso tem os braços abertos a **~55° da vertical** — é uma pose de T,
+não de pessoa parada. Os clipes agora são gerados com os braços a **~18°**, isto
+é, caídos ao lado do corpo (a mão fica 0,60 m abaixo do ombro, contra 0,41 m do
+repouso).
+
+Isso é feito em `tools/build_animations.py`, movendo o alvo IK de cada mão antes
+de assar. **Precisa ser assado no Blender**: mexer no controle IK em tempo de
+execução não funciona na Godot, porque quem obedece ao controle são as
+constraints — e constraints não existem em glTF. Foi o erro que deixou os braços
+travados.
+
+### Postura de balanço
+
+Por cima do clipe, o sistema aplica um ajuste **discreto** de tronco inclinado
+16° e pernas recolhidas, entrando e saindo suavemente. Só a **rotação** é
+ajustada aqui, porque `set_bone_pose_rotation` funciona em qualquer osso; a
+posição dos controles IK não. O rig não é alterado em disco.
 
 ## Preparação para uma segunda teia
 
@@ -131,6 +159,10 @@ física.
 
 - **Uma teia por vez.** O segundo disparo está preparado na física, não na
   entrada.
+- **A corda é reta.** Não simula catenária nem enrola; é uma linha esticada
+  entre a mão e a âncora.
+- **Sem animação dedicada de arremesso.** O braço sobe no clipe de pulo, mas não
+  há um gesto específico de lançar a teia.
 - **Sem animação dedicada** de disparo ou balanço; o ajuste é procedural.
 - **A física é um pêndulo rígido**, não uma corda com elasticidade. É estável e
   previsível, mas não simula alongamento da teia.

@@ -162,7 +162,7 @@ godot --headless --path . --script res://tools/tests/city_test.gd
 ```
 
 Cada teste imprime suas verificações e termina com código de saída 1 se alguma
-falhar. Hoje são 50 verificações do personagem, 63 do sistema de teias e 42 do
+falhar. Hoje são 50 verificações do personagem, 69 do sistema de teias e 42 do
 distrito urbano.
 
 ## Controles
@@ -173,9 +173,8 @@ distrito urbano.
 | Girar a câmera | arrastar na metade direita da tela | botão direito do mouse |
 | Pular | botão **Pular** | `Espaço` |
 | Correr | botão **Correr** | `Shift` |
-| Disparar teia | botão **Teia** | `E` |
-| Soltar teia | botão **Soltar** | `Q` |
-| Ajustar teia | controle deslizante | `R` recolhe / `F` afrouxa |
+| Teia (segurar/soltar) | botão **TEIA** | `E` |
+| Ajustar comprimento | controle deslizante | `R` recolhe / `F` afrouxa |
 
 ## Otimização de texturas
 
