@@ -40,6 +40,11 @@ func generate() -> Dictionary:
 	add_child(buildings)
 	_stats.merge(buildings.build(_lots), true)
 
+	var parks := ParkGenerator.new()
+	parks.name = "Parks"
+	add_child(parks)
+	_stats.merge(parks.build(blocks_per_side), true)
+
 	var furniture := StreetFurniture.new()
 	furniture.name = "StreetFurniture"
 	add_child(furniture)

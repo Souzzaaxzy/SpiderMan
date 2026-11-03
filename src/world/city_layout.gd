@@ -1,32 +1,57 @@
 class_name CityLayout
 extends RefCounted
-## Planta do distrito. Só calcula posições — não cria nenhum nó.
+## Planta da região urbana. Só calcula posições — não cria nenhum nó.
 ##
 ## Separar os dados da montagem permite testar a malha urbana sem instanciar
-## geometria, e deixa o gerador livre para decidir como desenhar cada peça.
+## geometria, e deixa cada gerador livre para decidir como desenhar.
 ##
-## A cidade é uma grade: quarteirões separados por ruas, com calçadas nas bordas.
-## A altura dos prédios cresce em direção ao centro, como em Manhattan.
+## ## Como a cidade é organizada
+##
+## Uma grade de quarteirões separados por ruas. Cada quarteirão recebe um **tipo**
+## que define o que ele contém:
+##
+## - `TOWER`: arranha-céus, no miolo da região. É onde o balanço rende mais.
+## - `COMMERCIAL`: prédios médios, com lojas no térreo.
+## - `RESIDENTIAL`: prédios baixos e estreitos.
+## - `PARK`: área verde com árvores, lago e caminhos. Quebra a monotonia de
+##   concreto e dá referência visual de deslocamento.
+## - `PLAZA`: praça aberta, com poucos prédios.
+##
+## A distribuição é determinística (semente fixa), então o resultado é
+## reproduzível nos testes.
 
 ## Largura de uma rua, de guia a guia.
-const STREET_WIDTH := 14.0
+const STREET_WIDTH := 16.0
 ## Largura da calçada em volta de cada quarteirão.
-const SIDEWALK_WIDTH := 3.0
+const SIDEWALK_WIDTH := 4.0
 ## Tamanho do quarteirão (lado), sem contar as ruas.
-const BLOCK_SIZE := 42.0
-## Altura do meio-fio: a calçada fica acima da rua.
-const CURB_HEIGHT := 0.15
-
+const BLOCK_SIZE := 52.0
 ## Distância entre o centro de um quarteirão e o seguinte.
 const CELL_SIZE := BLOCK_SIZE + STREET_WIDTH
 
-## Altura mínima e máxima dos prédios, em metros.
-const MIN_BUILDING_HEIGHT := 12.0
-const MAX_BUILDING_HEIGHT := 78.0
+## Alturas por tipo de quarteirão.
+const TOWER_MIN_HEIGHT := 55.0
+const TOWER_MAX_HEIGHT := 130.0
+const COMMERCIAL_MIN_HEIGHT := 22.0
+const COMMERCIAL_MAX_HEIGHT := 50.0
+const RESIDENTIAL_MIN_HEIGHT := 12.0
+const RESIDENTIAL_MAX_HEIGHT := 28.0
+
 ## Quantos prédios cabem ao longo de uma borda do quarteirão.
 const LOTS_PER_SIDE := 2
 ## Recuo do prédio em relação à guia da calçada.
-const BUILDING_SETBACK := SIDEWALK_WIDTH + 0.6
+const BUILDING_SETBACK := SIDEWALK_WIDTH + 0.8
+
+## Altura do meio-fio. Mantida em zero porque um degrau de calçada prende o
+## `CharacterBody3D`, que não sobe degraus sozinho — o piso é todo nivelado.
+const CURB_HEIGHT := 0.0
+
+## Margem de segurança em volta da região, para o jogador não cair no vazio.
+const WORLD_MARGIN := 90.0
+## Altura das paredes invisíveis que limitam a região.
+const WORLD_WALL_HEIGHT := 500.0
+
+enum BlockKind { TOWER, COMMERCIAL, RESIDENTIAL, PARK, PLAZA }
 
 
 ## Um lote: onde fica um prédio e o quanto ele ocupa.
@@ -43,80 +68,134 @@ class Lot extends RefCounted:
 		distance_to_center = p_distance
 
 
-## Gera os lotes de um distrito de `blocks_per_side` quarteirões por lado.
-##
-## O distrito é centrado na origem, então quarteirões de índice iguais em x e z
-## ficam à mesma distância do centro. `seed` fixa a variação de alturas para o
-## resultado ser reproduzível nos testes.
-static func generate_lots(blocks_per_side: int, seed_value: int = 20261103) -> Array[Lot]:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed_value
+## Um quarteirão: onde fica e o que contém.
+class Block extends RefCounted:
+	var center: Vector3
+	var kind: int
+	var row: int
+	var column: int
 
-	var lots: Array[Lot] = []
+	func _init(p_center: Vector3, p_kind: int, p_row: int, p_column: int) -> void:
+		center = p_center
+		kind = p_kind
+		row = p_row
+		column = p_column
+
+
+## Descreve a grade de quarteirões, com o tipo de cada um.
+##
+## Os parques ficam em posições fixas (dois deles, em quadrantes opostos) e o
+## miolo concentra os arranha-céus. O resto alterna entre comercial e
+## residencial de forma determinística.
+static func generate_blocks(blocks_per_side: int) -> Array[Block]:
+	var blocks: Array[Block] = []
 	var half := (blocks_per_side - 1) * 0.5
-	var max_index_distance := maxf(1.0, absf(half) + absf(half))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 424242
 
 	for row in blocks_per_side:
 		for column in blocks_per_side:
-			var block_center := Vector3(
+			var center := Vector3(
 				(column - half) * CELL_SIZE, 0.0, (row - half) * CELL_SIZE)
-			var index_distance := absf(column - half) + absf(row - half)
-			var centrality := 1.0 - clampf(index_distance / max_index_distance, 0.0, 1.0)
-			lots.append_array(_lots_in_block(block_center, centrality, rng))
+			blocks.append(Block.new(center, _kind_for(row, column, blocks_per_side, rng),
+				row, column))
+	return blocks
+
+
+## Decide o tipo do quarteirão.
+static func _kind_for(row: int, column: int, blocks_per_side: int,
+		rng: RandomNumberGenerator) -> int:
+	var half := (blocks_per_side - 1) * 0.5
+	var distance := absf(row - half) + absf(column - half)
+	var max_distance := maxf(1.0, half * 2.0)
+	var centrality := 1.0 - distance / max_distance
+
+	# Dois parques em cantos opostos: dão referência visual e variedade.
+	var corner_a := row == 0 and column == blocks_per_side - 1
+	var corner_b := row == blocks_per_side - 1 and column == 0
+	if corner_a or corner_b:
+		return BlockKind.PARK
+	# Uma praça perto do centro.
+	if centrality > 0.7 and rng.randf() < 0.25:
+		return BlockKind.PLAZA
+	# Miolo: arranha-céus.
+	if centrality > 0.45:
+		return BlockKind.TOWER
+	if centrality > 0.2:
+		return BlockKind.COMMERCIAL
+	return BlockKind.RESIDENTIAL
+
+
+## Gera os lotes de um distrito. `seed` fixa a variação para ser reproduzível.
+static func generate_lots(blocks_per_side: int, seed_value: int = 20261103) -> Array[Lot]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var lots: Array[Lot] = []
+	for block: Block in generate_blocks(blocks_per_side):
+		lots.append_array(_lots_in_block(block, rng))
 	return lots
 
 
-## Divide um quarteirão em lotes ao longo das quatro faces voltadas para a rua.
-static func _lots_in_block(block_center: Vector3, centrality: float,
-		rng: RandomNumberGenerator) -> Array[Lot]:
+## Divide um quarteirão em lotes. Parques e praças quase não têm prédio.
+static func _lots_in_block(block: Block, rng: RandomNumberGenerator) -> Array[Lot]:
+	if block.kind == BlockKind.PARK:
+		return []
 	var lots: Array[Lot] = []
 	var usable := BLOCK_SIZE - BUILDING_SETBACK * 2.0
 	var lot_length := usable / LOTS_PER_SIDE
 	var offset := BUILDING_SETBACK
-	# Profundidade do lote: o prédio ocupa a borda e deixa o miolo do quarteirão
-	# livre, o que mantém a contagem de geometria baixa.
 	var depth := usable / LOTS_PER_SIDE
+	var per_side := LOTS_PER_SIDE
+	if block.kind == BlockKind.PLAZA:
+		per_side = 1
 
 	for side in 4:
-		for slot in LOTS_PER_SIDE:
+		for slot in per_side:
 			var along := -usable * 0.5 + lot_length * (slot + 0.5)
 			var position: Vector3
 			var size: Vector2
 			match side:
-				0:  # face norte (-Z)
-					position = block_center + Vector3(along, 0.0, -usable * 0.5 - offset + depth * 0.5)
+				0:
+					position = block.center + Vector3(along, 0.0, -usable * 0.5 - offset + depth * 0.5)
 					size = Vector2(lot_length, depth)
-				1:  # face sul (+Z)
-					position = block_center + Vector3(along, 0.0, usable * 0.5 + offset - depth * 0.5)
+				1:
+					position = block.center + Vector3(along, 0.0, usable * 0.5 + offset - depth * 0.5)
 					size = Vector2(lot_length, depth)
-				2:  # face oeste (-X)
-					position = block_center + Vector3(-usable * 0.5 - offset + depth * 0.5, 0.0, along)
+				2:
+					position = block.center + Vector3(-usable * 0.5 - offset + depth * 0.5, 0.0, along)
 					size = Vector2(depth, lot_length)
-				_:  # face leste (+X)
-					position = block_center + Vector3(usable * 0.5 + offset - depth * 0.5, 0.0, along)
+				_:
+					position = block.center + Vector3(usable * 0.5 + offset - depth * 0.5, 0.0, along)
 					size = Vector2(depth, lot_length)
 
-			var height := _height_for(centrality, rng)
+			var height := _height_for(block.kind, rng)
 			var distance := Vector2(position.x, position.z).length()
 			lots.append(Lot.new(Vector3(position.x, 0.0, position.z), size, height, distance))
 	return lots
 
 
-## Altura do prédio: quanto mais central, mais alto, com variação para a silhueta
-## não ficar monótona.
-static func _height_for(centrality: float, rng: RandomNumberGenerator) -> float:
-	var base := lerpf(MIN_BUILDING_HEIGHT, MAX_BUILDING_HEIGHT, pow(centrality, 1.6))
-	var variation := rng.randf_range(0.78, 1.22)
-	return clampf(base * variation, MIN_BUILDING_HEIGHT, MAX_BUILDING_HEIGHT)
+## Altura do prédio, conforme o tipo do quarteirão.
+static func _height_for(kind: int, rng: RandomNumberGenerator) -> float:
+	match kind:
+		BlockKind.TOWER:
+			return rng.randf_range(TOWER_MIN_HEIGHT, TOWER_MAX_HEIGHT)
+		BlockKind.COMMERCIAL:
+			return rng.randf_range(COMMERCIAL_MIN_HEIGHT, COMMERCIAL_MAX_HEIGHT)
+		_:
+			return rng.randf_range(RESIDENTIAL_MIN_HEIGHT, RESIDENTIAL_MAX_HEIGHT)
 
 
-## Extensão total do distrito em metros (lado de um quadrado que o contém).
+## Extensão do distrito em metros (lado de um quadrado que o contém).
 static func district_extent(blocks_per_side: int) -> float:
 	return blocks_per_side * BLOCK_SIZE + (blocks_per_side + 1) * STREET_WIDTH
 
 
+## Extensão do piso, incluindo a margem de segurança.
+static func ground_extent(blocks_per_side: int) -> float:
+	return district_extent(blocks_per_side) + WORLD_MARGIN * 2.0
+
+
 ## Posições das ruas, nos dois eixos, para desenhar as pistas.
-## Devolve pares (coordenada do centro da rua, comprimento).
 static func street_lines(blocks_per_side: int) -> Array:
 	var lines: Array = []
 	var half := (blocks_per_side - 1) * 0.5
@@ -127,22 +206,17 @@ static func street_lines(blocks_per_side: int) -> Array:
 	return lines
 
 
-## Distrito: extensão total e margem de segurança.
-## A margem evita que o jogador caia no vazio ao explorar a borda da região.
-const WORLD_MARGIN := 60.0
-## Altura das paredes invisíveis que limitam a região.
-const WORLD_WALL_HEIGHT := 400.0
-
-## Extensão do piso, incluindo a margem além dos quarteirões.
-static func ground_extent(blocks_per_side: int) -> float:
-	return district_extent(blocks_per_side) + WORLD_MARGIN * 2.0
-
-
-## Posição de nascimento do jogador: no meio de uma rua na borda do distrito,
-## virado para o centro. Nascer na calçada daria apenas alguns metros de espaço
-## antes de esbarrar em um prédio.
+## Posição de nascimento: no meio de uma rua na borda, virado para o centro.
 static func spawn_position(blocks_per_side: int) -> Vector3:
 	var half := (blocks_per_side - 1) * 0.5
-	# Coordenada da rua mais a oeste e mais ao norte (entre quarteirões).
 	var street := (0 - half - 0.5) * CELL_SIZE
 	return Vector3(street, 1.2, street)
+
+
+## Centro de um parque, para o gerador colocar árvores e lago.
+static func parks(blocks_per_side: int) -> Array[Vector3]:
+	var centers: Array[Vector3] = []
+	for block: Block in generate_blocks(blocks_per_side):
+		if block.kind == BlockKind.PARK:
+			centers.append(block.center)
+	return centers

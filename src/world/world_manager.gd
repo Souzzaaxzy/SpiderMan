@@ -7,7 +7,7 @@ extends Node3D
 ## ou recarregar a região sem mexer no resto da cena.
 
 ## Quarteirões por lado do primeiro distrito.
-@export var blocks_per_side: int = 3
+@export var blocks_per_side: int = 5
 @export var layout_seed: int = 20261103
 
 var _city: CityGenerator
