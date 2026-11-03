@@ -48,6 +48,46 @@ def _world_to_local(armature: bpy.types.Object, bone_name: str, world_delta) -> 
     return matrix.inverted() @ Vector(world_delta)
 
 
+# --- Braços caídos ---------------------------------------------------------
+#
+# O rig de repouso tem os braços abertos a ~55° da vertical: é uma pose de T, não
+# uma pose de pessoa parada. Movendo o alvo IK de cada mão para baixo e para
+# dentro do corpo, os braços caem a ~18°, como no dia a dia.
+#
+# Isso PRECISA ser assado aqui: na Godot, mexer no controle IK não faz nada,
+# porque quem obedece ao controle são as constraints — e constraints não existem
+# em glTF. Foi exatamente o erro que deixou os braços travados no jogo.
+RELAXED_ARM_OFFSET = Vector((-0.40, 0.0, -0.40))
+HAND_IK_BONES = ("c_hand_ik.l", "c_hand_ik.r")
+
+
+def _relaxed_arm_pose(side: str, extra: Vector | None = None) -> tuple:
+    """Pose do alvo IK da mão: braço caído ao lado do corpo."""
+    sign = 1.0 if side == "l" else -1.0
+    delta = Vector((RELAXED_ARM_OFFSET.x * sign, RELAXED_ARM_OFFSET.y, RELAXED_ARM_OFFSET.z))
+    if extra is not None:
+        delta += extra
+    return (delta, None)
+
+
+def _relaxed_arms(extra: dict | None = None) -> dict:
+    """Pose base com os dois braços caídos, opcionalmente com ajustes por lado."""
+    pose = {}
+    for side in ("l", "r"):
+        pose["c_hand_ik.%s" % side] = _relaxed_arm_pose(side)
+    if extra:
+        pose.update(extra)
+    return pose
+
+
+def _throwing_arm(side: str, lift: float) -> tuple:
+    """Braço levantado na direção do arremesso: para cima e para frente."""
+    sign = 1.0 if side == "l" else -1.0
+    # Parte do braço caído e sobe até acima do ombro.
+    delta = Vector((-0.45 * sign, -0.45, -0.40 + 0.55 * lift))
+    return (delta, None)
+
+
 def _clear_pose(armature: bpy.types.Object) -> None:
     for pose_bone in armature.pose.bones:
         pose_bone.rotation_mode = "QUATERNION"
@@ -104,21 +144,21 @@ def _stash(armature: bpy.types.Object, action) -> None:
 
 
 def build_idle(armature: bpy.types.Object, action) -> None:
-    """Respiração discreta: o corpo sobe e desce levemente."""
+    """Parado: braços caídos, com respiração discreta."""
     length = 48
     for step in range(0, length + 1, 6):
         phase = step / length * math.tau
         bob = 0.012 * math.sin(phase)
-        _key_controls(armature, 1 + step, {
+        _key_controls(armature, 1 + step, _relaxed_arms({
             "c_root.x": ((0.0, 0.0, bob), None),
-        })
+        }))
     _bake(armature, 1, 1 + length)
     _stash(armature, action)
 
 
 def _locomotion(armature: bpy.types.Object, action, length: int, stride: float,
                 lift: float, arm_swing: float, bob: float, lean: float) -> None:
-    """Ciclo de passada: pernas alternam, braços em oposição, corpo balança.
+    """Ciclo de passada: pernas alternam, braços caídos balançando em oposição.
 
     Os deslocamentos são em espaço mundial: -Y é para frente, +Z para cima.
     """
@@ -133,20 +173,22 @@ def _locomotion(armature: bpy.types.Object, action, length: int, stride: float,
         # O pé só levanta na metade do ciclo em que avança para frente.
         left_lift = max(0.0, math.sin(phase)) * lift
         right_lift = max(0.0, -math.sin(phase)) * lift
-        # Braços opostos às pernas do mesmo lado: perna atrás => braço à frente.
-        left_arm = -math.cos(phase) * arm_swing
-        right_arm = math.cos(phase) * arm_swing
+        # Braços caídos, balançando junto com a perna oposta.
+        left_arm = math.cos(phase) * arm_swing
+        right_arm = -math.cos(phase) * arm_swing
         # Pequeno balanço lateral do quadril, no compasso da passada.
         sway = 0.015 * math.sin(phase)
 
-        _key_controls(armature, frame, {
+        pose = _relaxed_arms({
             "c_foot_ik.l": ((0.0, left_stride, left_lift), None),
             "c_foot_ik.r": ((0.0, right_stride, right_lift), None),
-            "c_hand_ik.l": ((0.0, left_arm, 0.0), None),
-            "c_hand_ik.r": ((0.0, right_arm, 0.0), None),
             "c_root.x": ((sway, 0.0, bob * abs(math.sin(phase))),
                          Quaternion(Vector((1, 0, 0)), math.radians(lean))),
         })
+        # O balanço do braço soma ao braço já caído.
+        pose["c_hand_ik.l"] = _relaxed_arm_pose("l", Vector((0.0, left_arm, 0.0)))
+        pose["c_hand_ik.r"] = _relaxed_arm_pose("r", Vector((0.0, right_arm, 0.0)))
+        _key_controls(armature, frame, pose)
     _bake(armature, 1, 1 + length)
     _stash(armature, action)
 
@@ -162,23 +204,25 @@ def build_run(armature: bpy.types.Object, action) -> None:
 
 
 def build_jump(armature: bpy.types.Object, action) -> None:
-    """Impulso: agacha, estende, sobe e pousa."""
+    """Impulso: agacha, estende, sobe e pousa. O braço sobe no arremesso."""
     keys = [
-        (1, 0.00, 0.00, 0.00, 0.0),
-        (4, -0.06, 0.06, -0.10, 2.0),   # agacha (pés para frente e trás)
-        (8, 0.14, -0.10, 0.16, 4.0),    # estende e sobe
-        (14, 0.20, -0.14, 0.12, 6.0),   # auge, joelhos recolhidos
-        (20, 0.06, -0.04, -0.05, 2.0),  # descida
-        (24, 0.00, 0.00, 0.00, 0.0),    # pousa
+        (1, 0.00, 0.0, 0.00, 0.0),
+        (4, -0.06, 0.0, -0.10, 2.0),   # agacha
+        (8, 0.14, 0.8, 0.16, 4.0),     # estende, braço subindo
+        (14, 0.20, 1.0, 0.12, 6.0),    # auge, braço no alto
+        (20, 0.06, 0.3, -0.05, 2.0),   # descida
+        (24, 0.00, 0.0, 0.00, 0.0),    # pousa
     ]
-    for frame, foot_y, arm_y, bob, lean in keys:
-        _key_controls(armature, frame, {
+    for frame, foot_y, lift, bob, lean in keys:
+        pose = _relaxed_arms({
             "c_foot_ik.l": ((0.0, foot_y, max(0.0, foot_y)), None),
             "c_foot_ik.r": ((0.0, foot_y, max(0.0, foot_y)), None),
-            "c_hand_ik.l": ((0.0, arm_y, 0.0), None),
-            "c_hand_ik.r": ((0.0, arm_y, 0.0), None),
             "c_root.x": ((0.0, 0.0, bob), Quaternion(Vector((1, 0, 0)), math.radians(lean))),
         })
+        # Braço direito sobe no arremesso; o esquerdo acompanha um pouco.
+        pose["c_hand_ik.r"] = _throwing_arm("r", lift)
+        pose["c_hand_ik.l"] = _throwing_arm("l", lift * 0.5)
+        _key_controls(armature, frame, pose)
     _bake(armature, 1, 24)
     _stash(armature, action)
 

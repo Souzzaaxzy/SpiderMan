@@ -34,10 +34,15 @@ extends Node
 @export var swing_degrees: float = 30.0
 
 @export_group("Balanço por teia")
-## Postura de balanço: tronco inclinado para frente e pernas recolhidas, aplicada
-## por cima do clipe. Valores baixos de propósito — é um ajuste discreto, não uma
-## animação falsa.
-@export var swing_lean_degrees: float = 14.0
+## Postura de balanço: tronco inclinado e pernas recolhidas, aplicada por cima do
+## clipe. Valores baixos de propósito — é um ajuste discreto, não uma animação
+## falsa.
+##
+## Só a rotação é ajustada aqui, porque `set_bone_pose_rotation` funciona em
+## qualquer osso. Já a posição dos controles IK não funciona: quem obedece ao
+## controle são as constraints, que não existem em glTF. Por isso os braços
+## caídos vêm assados nos clipes.
+@export var swing_lean_degrees: float = 16.0
 @export var swing_pose_blend_speed: float = 3.5
 ## Ossos usados na postura. Se algum não existir, o ajuste é ignorado.
 @export var spine_bone: StringName = &"c_spine_02.x"
@@ -79,7 +84,7 @@ func _cache_swing_bones() -> void:
 	_spine_index = _skeleton.find_bone(spine_bone)
 	_thigh_indices = _resolve_bones(thigh_bones)
 	_knee_indices = _resolve_bones(knee_bones)
-
+	
 
 func _resolve_bones(names: Array[StringName]) -> Array[int]:
 	var indices: Array[int] = []
@@ -121,10 +126,6 @@ func _process(delta: float) -> void:
 	else:
 		_drive_procedural(speed, grounded, delta)
 
-
-## Aplica uma postura discreta de balanço por cima do clipe: tronco inclinado e
-## pernas recolhidas, entrando e saindo suavemente. Não substitui o clipe, só
-## acompanha o movimento. O rig original não é alterado em disco.
 func _apply_swing_pose(delta: float) -> void:
 	if _skeleton == null:
 		return
