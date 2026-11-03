@@ -1,40 +1,29 @@
 #!/usr/bin/env python3
-"""Retargeting das animações do Mixamo para o rig do personagem.
+"""Retargeting completo das animações do Mixamo para o rig Rigify.
 
-## A descoberta que definiu o método
+## Por que a versão anterior deixava o personagem travado
 
-O rig é *Rigify em modo IK*: os ossos que **deformam a malha** são
-`thigh_stretch.l`, `leg_twist_2.l`, `foot.l`, `arm_stretch.l`, `forearm_twist_2.l`
-e assim por diante — nenhum deles é o osso que se chamaria de "coxa" ou "braço".
-Quem manda neles são as constraints, a partir dos **alvos IK**
-(`c_foot_ik.l`, `c_hand_ik.l`) e do quadril (`root.x`).
+O rig é *Rigify*. Ele tem **dois modos de controle** para braços e pernas,
+escolhidos pelo slider `ik_fk_switch` de cada controle:
 
-Copiar rotação osso a osso, como numa primeira tentativa, não funciona: medi que
-o pé movia **0,000 m** com as constraints ativas, porque a `COPY_ROTATION`
-sobrescrevia o que eu escrevia.
+- `ik_fk_switch = 0` → modo **IK**. Quem manda é o alvo (`c_hand_ik.l`), e os
+  controles FK (`c_arm_fk.l`, `c_forearm_fk.l`) ficam **inertes**.
+- `ik_fk_switch = 1` → modo **FK**. Quem manda são os controles FK, e o alvo IK
+  fica inerte.
 
-O método correto para um rig assim é o que já uso nas MISSÕES 002 e 003:
-**mover os alvos IK** para as posições que o Mixamo indica, e deixar as
-constraints fazerem o resto. Depois **assar** a pose avaliada.
+A versão anterior dirigia **só os alvos IK das mãos e dos pés** — quatro pontos
+no corpo inteiro. Resultado: ombros, cotovelos, joelhos e coluna nunca recebiam
+pose. Era essa a rigidez relatada: o corpo só tinha as pontas controladas.
 
-## Mapeamento
+Medido: com `ik_fk_switch = 0`, girar `c_arm_fk.l` 40° movia a mão **0,000 m**.
+Com o switch em 1, movia **0,398 m**.
 
-| Mixamo | nosso controle | o que move |
-| --- | --- | --- |
-| `mixamorig:Hips` | `root.x` | corpo todo (posição + rotação) |
-| `mixamorig:LeftFoot` | `c_foot_ik.l` | perna esquerda inteira |
-| `mixamorig:RightFoot` | `c_foot_ik.r` | perna direita inteira |
-| `mixamorig:LeftHand` | `c_hand_ik.l` | braço esquerdo inteiro |
-| `mixamorig:RightHand` | `c_hand_ik.r` | braço direito inteiro |
+## O método correto
 
-A rotação do corpo vem do `Hips`; a posição dos membros vem dos alvos IK. É
-suficiente para uma movimentação convincente e evita dirigir 366 ossos.
-
-## Root motion
-
-Os clipes do Mixamo **têm root motion** (o `Walking` anda 1,79 m). A missão pede
-animações **in-place**: quem move o personagem é a física. Então a translação
-horizontal é descartada e só a oscilação vertical é preservada.
+1. Ligar `ik_fk_switch = 1` nos quatro membros, para os controles FK mandarem.
+2. Retargetar **osso a osso** para a cadeia FK completa: quadril, coluna, pescoço,
+   cabeça, ombros, braços, antebraços, mãos, coxas, canelas e pés.
+3. Assar a pose avaliada em todos os 366 ossos.
 
 Uso:
     python3 tools/retarget_animations.py <cena.blend> <pasta_mixamo> <saida.glb> <texturas>
@@ -52,21 +41,41 @@ from mathutils import Matrix, Quaternion, Vector
 FPS = 24
 KEEP_OBJECTS = ("rig", "Body", "Frames", "Logos", "Webs")
 
-# Mixamo → nossos controles.
-IK_MAP = {
-    "mixamorig:LeftFoot": "c_foot_ik.l",
-    "mixamorig:RightFoot": "c_foot_ik.r",
-    "mixamorig:LeftHand": "c_hand_ik.l",
-    "mixamorig:RightHand": "c_hand_ik.r",
+# Mapeamento Mixamo → nossos controles FK.
+#
+# Nossa coluna tem quatro segmentos (`spine_01..04`) e o Mixamo tem três
+# (`Spine`, `Spine1`, `Spine2`). O mapeamento abaixo associa os três primeiros e
+# deixa o quarto em repouso — foi a recomendação encontrada na pesquisa, porque
+# associar `Spine` ao `spine_01` faz o osso controlar o corpo errado.
+BONE_MAP = {
+    "mixamorig:Hips": "c_root.x",
+    "mixamorig:Spine": "c_spine_01.x",
+    "mixamorig:Spine1": "c_spine_02.x",
+    "mixamorig:Spine2": "c_spine_03.x",
+    "mixamorig:Neck": "c_neck.x",
+    "mixamorig:Head": "c_head.x",
+    "mixamorig:LeftShoulder": "c_shoulder.l",
+    "mixamorig:LeftArm": "c_arm_fk.l",
+    "mixamorig:LeftForeArm": "c_forearm_fk.l",
+    "mixamorig:LeftHand": "c_hand_fk.l",
+    "mixamorig:RightShoulder": "c_shoulder.r",
+    "mixamorig:RightArm": "c_arm_fk.r",
+    "mixamorig:RightForeArm": "c_forearm_fk.r",
+    "mixamorig:RightHand": "c_hand_fk.r",
+    "mixamorig:LeftUpLeg": "c_thigh_fk.l",
+    "mixamorig:LeftLeg": "c_leg_fk.l",
+    "mixamorig:LeftFoot": "c_foot_fk.l",
+    "mixamorig:RightUpLeg": "c_thigh_fk.r",
+    "mixamorig:RightLeg": "c_leg_fk.r",
+    "mixamorig:RightFoot": "c_foot_fk.r",
 }
-HIPS_MIXAMO = "mixamorig:Hips"
-HIPS_OURS = "root.x"
 
-# Clipe no jogo → arquivo do Mixamo.
+# Controles com slider IK/FK: precisam ir para 1 (FK) para os controles FK
+# deixarem de ser inertes.
+IK_FK_SWITCHES = ("c_hand_ik.l", "c_hand_ik.r", "c_foot_ik.l", "c_foot_ik.r")
+
+# Mixamo → arquivo. `idle` é gerado, não vem do pacote.
 CLIP_SOURCES = {
-    # `idle` e a pose de repouso. O pacote nao trouxe um clipe "Idle" do Mixamo,
-    # entao ele e gerado parado (ver `_build_idle_clip`). Sem isso o personagem
-    # parado tocava `walking` — o defeito de "ficar se mexendo" relatado.
     "idle": "__IDLE__",
     "walking": "Walking.fbx",
     "jog": "Running.fbx",
@@ -95,15 +104,28 @@ def _clear_pose(armature) -> None:
 
 
 def _capture_rest(armature) -> dict:
-    """Posição e rotação de repouso dos controles, com a action removida.
+    """Matriz de repouso de cada osso, com a action removida.
 
-    Se a action continuar atribuída, o `frame_set` reaplica a pose animada e o
-    "repouso" capturado seria o do primeiro quadro.
+    Sem remover a action, o `frame_set` reaplica a pose animada e o "repouso"
+    capturado seria o do primeiro quadro — o delta sairia nulo.
     """
     if armature.animation_data:
         armature.animation_data.action = None
     _clear_pose(armature)
     return {pb.name: pb.matrix.copy() for pb in armature.pose.bones}
+
+
+def _set_fk_mode(armature) -> None:
+    """Liga o modo FK nos quatro membros.
+
+    Sem isto os controles FK são inertes: medido, girar `c_arm_fk.l` 40° movia a
+    mão 0,000 m em modo IK, contra 0,398 m em modo FK.
+    """
+    for name in IK_FK_SWITCHES:
+        pose_bone = armature.pose.bones.get(name)
+        if pose_bone is not None and "ik_fk_switch" in pose_bone.keys():
+            pose_bone["ik_fk_switch"] = 1.0
+    bpy.context.view_layer.update()
 
 
 def _import_mixamo(path: str):
@@ -126,15 +148,124 @@ def _import_mixamo(path: str):
     return armature, action
 
 
+def _hierarchy_order(armature, bone_names) -> list:
+    """Ordena os ossos do topo para baixo: o pai precisa ser escrito primeiro."""
+    def depth(name):
+        bone = armature.data.bones.get(name)
+        level = 0
+        while bone is not None and bone.parent is not None:
+            level += 1
+            bone = bone.parent
+        return level
+    return sorted([n for n in bone_names if armature.data.bones.get(n) is not None], key=depth)
+
+
+def _retarget_bone(mixamo_pose, our_rest, our_parent_world, our_parent_rest,
+                   space: Matrix) -> Quaternion:
+    """Rotação local que faz nosso osso apontar como o do Mixamo.
+
+    ## A fórmula, validada por medição
+
+    O Mixamo traz o armature **rotacionado 90° em X e com escala 0,01**; o nosso
+    está alinhado ao mundo, escala 1. Sem compensar isso, a rotação copiada sai
+    girada: medido, **erro de 82,9 graus** e o corpo comprimido (cabeça a 1,12 m
+    em vez de 1,85 m).
+
+    A matriz de espaço correta é `nosso⁻¹ · mixamo`. Com ela o erro cai para
+    **0,3 graus** e a cabeça fica na altura certa (1,85 m). A variante invertida
+    (`nosso · mixamo⁻¹`) dá 157,8 graus — é o pior caso.
+
+    A conta completa:
+
+        alvo_mundo = espaço · rotação_mundo_do_osso_mixamo
+        local      = (pose_pai · repouso_relativo)⁻¹ · alvo_mundo
+    """
+    parent_world = our_parent_world.to_3x3().normalized()
+    rest_local = our_parent_rest.inverted() @ our_rest
+    reference = (parent_world @ rest_local.to_3x3().normalized()).inverted()
+    target = space @ mixamo_pose.to_3x3().normalized()
+    return (reference @ target).to_quaternion()
+
+
+def _retarget_clip(our_armature, mixamo_armature, action, clip_name: str) -> int:
+    frame_start = int(action.frame_range[0])
+    frame_end = int(action.frame_range[1])
+
+    mixamo_rest = _capture_rest(mixamo_armature)
+    our_rest = _capture_rest(our_armature)
+
+    mixamo_armature.animation_data_create()
+    mixamo_armature.animation_data.action = action
+    if hasattr(mixamo_armature.animation_data, "action_slot") and action.slots:
+        mixamo_armature.animation_data.action_slot = action.slots[0]
+
+    _set_fk_mode(our_armature)
+    ordered = _hierarchy_order(our_armature, list(BONE_MAP.values()))
+    # O armature do Mixamo esta rotacionado 90 graus em X e tem escala 0.01.
+    # `nosso^-1 * mixamo` compensa isso: medido, o erro angular cai de 82,9 para
+    # 0,3 graus, e a cabeca volta para a altura certa (1,85 m).
+    space = (our_armature.matrix_world.to_3x3().normalized().inverted()
+             @ mixamo_armature.matrix_world.to_3x3().normalized())
+
+    our_action = _new_action(our_armature, clip_name)
+    scene = bpy.context.scene
+    hips_start = None
+
+    for frame in range(frame_start, frame_end + 1):
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+
+        for our_name in ordered:
+            mixamo_name = _mixamo_for(our_name)
+            if mixamo_name is None:
+                continue
+            mixamo_bone = mixamo_armature.pose.bones.get(mixamo_name)
+            our_bone = our_armature.pose.bones.get(our_name)
+            if mixamo_bone is None or our_bone is None:
+                continue
+            if mixamo_name not in mixamo_rest or our_name not in our_rest:
+                continue
+
+            our_parent = our_bone.parent
+            our_parent_world = our_parent.matrix if our_parent is not None else Matrix.Identity(4)
+            our_parent_rest = (our_rest[our_parent.name]
+                               if our_parent is not None and our_parent.name in our_rest
+                               else Matrix.Identity(4))
+
+            our_bone.rotation_mode = "QUATERNION"
+            our_bone.rotation_quaternion = _retarget_bone(
+                mixamo_bone.matrix, our_rest[our_name],
+                our_parent_world, our_parent_rest, space)
+
+            # O quadril carrega a oscilação vertical; o deslocamento horizontal é
+            # root motion e é descartado (a física do jogo move o personagem).
+            if our_name == "c_root.x":
+                hips_world = mixamo_armature.matrix_world @ mixamo_bone.matrix.translation
+                if hips_start is None:
+                    hips_start = hips_world
+                vertical = hips_world.z - hips_start.z
+                target = our_rest[our_name].translation + Vector((0.0, 0.0, vertical))
+                our_bone.location = _world_to_local(our_bone, target, our_rest[our_name])
+                our_bone.keyframe_insert("location", frame=frame)
+            else:
+                our_bone.location = Vector((0.0, 0.0, 0.0))
+
+            our_bone.keyframe_insert("rotation_quaternion", frame=frame)
+            bpy.context.view_layer.update()
+
+        bpy.context.view_layer.update()
+
+    _bake_full(our_armature, frame_start, frame_end)
+    our_action.use_fake_user = True
+    _stash(our_armature, our_action)
+    return frame_end - frame_start + 1
+
+
 def _build_idle_clip(our_armature, mixamo_dir: str, clip_name: str) -> int:
     """Gera o clipe de repouso a partir do primeiro quadro de uma caminhada.
 
-    O pacote não trouxe um `Idle` do Mixamo, e sem ele o personagem parado tocava
+    O pacote não trouxe um `Idle` do Mixamo. Sem ele, o personagem parado tocava
     `walking` — andando no lugar, que era o defeito de "ficar se mexendo".
-
-    A solução é usar a **pose do primeiro quadro de uma caminhada**, que é neutra
-    (pés no chão, braços ao lado), e mantê-la fixa com uma respiração discreta.
-    É melhor que a pose de repouso do rig, que tem os braços abertos.
     """
     source = os.path.join(mixamo_dir, "Walking.fbx")
     if not os.path.isfile(source):
@@ -150,22 +281,57 @@ def _build_idle_clip(our_armature, mixamo_dir: str, clip_name: str) -> int:
     if hasattr(mixamo_armature.animation_data, "action_slot") and action.slots:
         mixamo_armature.animation_data.action_slot = action.slots[0]
 
+    _set_fk_mode(our_armature)
+    ordered = _hierarchy_order(our_armature, list(BONE_MAP.values()))
+    # O armature do Mixamo esta rotacionado 90 graus em X e tem escala 0.01.
+    # `nosso^-1 * mixamo` compensa isso: medido, o erro angular cai de 82,9 para
+    # 0,3 graus, e a cabeca volta para a altura certa (1,85 m).
+    space = (our_armature.matrix_world.to_3x3().normalized().inverted()
+             @ mixamo_armature.matrix_world.to_3x3().normalized())
+
     our_action = _new_action(our_armature, clip_name)
     scene = bpy.context.scene
     frame_start = int(action.frame_range[0])
     length = 48
 
-    # Uma amostra só, do primeiro quadro, repetida: pose estável.
+    # Amostra a pose neutra do primeiro quadro e repete, com respiração discreta.
     scene.frame_set(frame_start)
     bpy.context.view_layer.update()
-    snapshot = _sample_pose(mixamo_armature, mixamo_rest, our_armature, our_rest)
+    snapshot = {}
+    for our_name in ordered:
+        mixamo_name = _mixamo_for(our_name)
+        if mixamo_name is None:
+            continue
+        mixamo_bone = mixamo_armature.pose.bones.get(mixamo_name)
+        if mixamo_bone is None or mixamo_name not in mixamo_rest or our_name not in our_rest:
+            continue
+        snapshot[our_name] = mixamo_bone.matrix.copy()
 
     for step in range(length + 1):
         frame = 1 + step
-        # Respiração: o quadril sobe e desce 1 cm, devagar.
-        bob = 0.01 * math.sin(step / float(length) * math.tau)
-        _write_sampled_pose(our_armature, our_rest, snapshot, frame, bob)
-        bpy.context.view_layer.update()
+        bob = 0.008 * math.sin(step / float(length) * math.tau)
+        for our_name in ordered:
+            if our_name not in snapshot:
+                continue
+            our_bone = our_armature.pose.bones.get(our_name)
+            mixamo_name = _mixamo_for(our_name)
+            if our_bone is None or mixamo_name is None:
+                continue
+            our_parent = our_bone.parent
+            our_parent_world = our_parent.matrix if our_parent is not None else Matrix.Identity(4)
+            our_parent_rest = (our_rest[our_parent.name]
+                               if our_parent is not None and our_parent.name in our_rest
+                               else Matrix.Identity(4))
+            our_bone.rotation_mode = "QUATERNION"
+            our_bone.rotation_quaternion = _retarget_bone(
+                snapshot[our_name], our_rest[our_name],
+                our_parent_world, our_parent_rest, space)
+            if our_name == "c_root.x":
+                target = our_rest[our_name].translation + Vector((0.0, 0.0, bob))
+                our_bone.location = _world_to_local(our_bone, target, our_rest[our_name])
+                our_bone.keyframe_insert("location", frame=frame)
+            our_bone.keyframe_insert("rotation_quaternion", frame=frame)
+            bpy.context.view_layer.update()
 
     _bake_full(our_armature, 1, 1 + length)
     our_action.use_fake_user = True
@@ -174,63 +340,24 @@ def _build_idle_clip(our_armature, mixamo_dir: str, clip_name: str) -> int:
     return length + 1
 
 
-def _sample_pose(mixamo_armature, mixamo_rest, our_armature, our_rest) -> dict:
-    """Lê a pose do Mixamo num quadro e devolve os alvos no espaço do nosso rig."""
-    mixamo_to_our = (our_armature.matrix_world.to_3x3().normalized()
-                     @ mixamo_armature.matrix_world.to_3x3().normalized().inverted())
-    sample = {"ik": {}, "hips_rotation": Matrix.Identity(3)}
-    for mixamo_name, our_name in IK_MAP.items():
-        bone = mixamo_armature.pose.bones.get(mixamo_name)
-        rest = mixamo_rest.get(mixamo_name)
-        if bone is None or rest is None:
-            continue
-        sample["ik"][our_name] = {
-            "position": mixamo_armature.matrix_world @ bone.matrix.translation,
-            "rotation": mixamo_to_our @ (bone.matrix.to_3x3().normalized()
-                                         @ rest.to_3x3().normalized().inverted()),
-        }
-    hips = mixamo_armature.pose.bones.get(HIPS_MIXAMO)
-    hips_rest = mixamo_rest.get(HIPS_MIXAMO)
-    if hips is not None and hips_rest is not None:
-        sample["hips_rotation"] = mixamo_to_our @ (hips.matrix.to_3x3().normalized()
-                                                   @ hips_rest.to_3x3().normalized().inverted())
-        sample["hips_position"] = mixamo_armature.matrix_world @ hips.matrix.translation
-    return sample
+def _world_to_local(bone, world_position: Vector, rest_world: Matrix) -> Vector:
+    """`location` local que põe o osso em `world_position`."""
+    return rest_world.to_3x3().inverted() @ (world_position - rest_world.translation)
 
 
-def _write_sampled_pose(our_armature, our_rest, sample: dict, frame: int,
-                        vertical_offset: float) -> None:
-    """Escreve uma pose amostrada no nosso rig, com deslocamento vertical opcional."""
-    our_hips = our_armature.pose.bones.get(HIPS_OURS)
-    if our_hips is not None and "hips_position" in sample:
-        our_hips.rotation_mode = "QUATERNION"
-        our_hips.rotation_quaternion = _world_rotation_to_local(
-            our_hips, sample["hips_rotation"], our_rest[HIPS_OURS])
-        target = sample["hips_position"] + Vector((0.0, 0.0, vertical_offset))
-        our_hips.location = _world_to_bone_location(our_hips, target, our_rest[HIPS_OURS])
-        our_hips.keyframe_insert("rotation_quaternion", frame=frame)
-        our_hips.keyframe_insert("location", frame=frame)
-
-    for our_name, data in sample["ik"].items():
-        our_bone = our_armature.pose.bones.get(our_name)
-        if our_bone is None:
-            continue
-        our_bone.location = _world_to_bone_location(
-            our_bone, data["position"], our_rest[our_name])
-        our_bone.rotation_mode = "QUATERNION"
-        our_bone.rotation_quaternion = _world_rotation_to_local(
-            our_bone, data["rotation"], our_rest[our_name])
-        our_bone.keyframe_insert("location", frame=frame)
-        our_bone.keyframe_insert("rotation_quaternion", frame=frame)
+def _mixamo_for(our_name: str) -> str | None:
+    for mixamo_name, mapped in BONE_MAP.items():
+        if mapped == our_name:
+            return mixamo_name
+    return None
 
 
 def _bake_full(armature, frame_start: int, frame_end: int) -> None:
     """Assa a pose avaliada em chaves de todos os ossos.
 
     `nla.bake` opera sobre o **objeto ativo**. No fluxo completo o ativo é o
-    esqueleto do Mixamo recém-importado, então o rig é selecionado e ativado
-    aqui, explicitamente — sem isto o bake assava o esqueleto errado e o clipe
-    saía com dois quadros.
+    esqueleto do Mixamo recém-importado, então o rig é ativado aqui — sem isto o
+    bake assa o esqueleto errado e o clipe sai com 2 quadros.
     """
     bpy.ops.object.select_all(action="DESELECT")
     armature.select_set(True)
@@ -247,109 +374,6 @@ def _bake_full(armature, frame_start: int, frame_end: int) -> None:
         bake_types={"POSE"},
     )
     bpy.ops.object.mode_set(mode="OBJECT")
-
-
-def _world_to_bone_location(bone, world_position: Vector, rest_world: Matrix) -> Vector:
-    """`location` local que põe o osso em `world_position`.
-
-    O controle IK não tem pai, então o alvo é resolvido no espaço do próprio
-    osso: subtrai-se a posição de repouso, no referencial de repouso.
-    """
-    local_delta = rest_world.to_3x3().inverted() @ (world_position - rest_world.translation)
-    return local_delta
-
-
-def _world_rotation_to_local(bone, world_rotation: Matrix, rest_world: Matrix) -> Quaternion:
-    """Rotação local que aplica `world_rotation` sobre o repouso do osso."""
-    rest_rotation = rest_world.to_3x3().normalized()
-    local = rest_rotation.inverted() @ world_rotation.to_3x3().normalized() @ rest_rotation
-    return local.to_quaternion()
-
-
-def _retarget_clip(our_armature, mixamo_armature, action, clip_name: str) -> int:
-    frame_start = int(action.frame_range[0])
-    frame_end = int(action.frame_range[1])
-
-    mixamo_rest = _capture_rest(mixamo_armature)
-    our_rest = _capture_rest(our_armature)
-
-    mixamo_armature.animation_data_create()
-    mixamo_armature.animation_data.action = action
-    if hasattr(mixamo_armature.animation_data, "action_slot") and action.slots:
-        mixamo_armature.animation_data.action_slot = action.slots[0]
-
-    our_action = _new_action(our_armature, clip_name)
-    scene = bpy.context.scene
-    hips_start = None
-    # O Mixamo tem escala 0.01 e eixo Y-up. Converter a rotacao para o espaco do
-    # nosso rig evita que o braco aponte para o lado errado.
-    mixamo_to_our_rotation = (our_armature.matrix_world.to_3x3().normalized()
-                              @ mixamo_armature.matrix_world.to_3x3().normalized().inverted())
-
-    for frame in range(frame_start, frame_end + 1):
-        scene.frame_set(frame)
-        bpy.context.view_layer.update()
-
-        # --- Quadril: rotação e oscilação vertical ---
-        hips_bone = mixamo_armature.pose.bones.get(HIPS_MIXAMO)
-        our_hips = our_armature.pose.bones.get(HIPS_OURS)
-        if hips_bone is not None and our_hips is not None:
-            # `pose.matrix` está no espaço do armature do Mixamo, que é Y-up e
-            # rotacionado. Usar cru dava alturas absurdas (o pé "subia" 0,9 m num
-            # passo). `matrix_world @` traz para o mundo do Blender, em metros.
-            hips_world = mixamo_armature.matrix_world @ hips_bone.matrix.translation
-            if hips_start is None:
-                hips_start = hips_world
-            rest = mixamo_rest.get(HIPS_MIXAMO)
-            delta_rotation = Matrix.Identity(3)
-            if rest is not None:
-                delta_rotation = mixamo_to_our_rotation @ (
-                    hips_bone.matrix.to_3x3().normalized()
-                    @ rest.to_3x3().normalized().inverted())
-            our_hips.rotation_mode = "QUATERNION"
-            our_hips.rotation_quaternion = _world_rotation_to_local(
-                our_hips, delta_rotation, our_rest[HIPS_OURS])
-            # Só a oscilação vertical: o horizontal é root motion, e a física do
-            # jogo é quem move o personagem.
-            vertical = hips_world.z - hips_start.z
-            our_hips.location = _world_to_bone_location(
-                our_hips, our_rest[HIPS_OURS].translation + Vector((0.0, 0.0, vertical)),
-                our_rest[HIPS_OURS])
-            our_hips.keyframe_insert("rotation_quaternion", frame=frame)
-            our_hips.keyframe_insert("location", frame=frame)
-
-        # --- Membros: os alvos IK seguem as mãos e os pés do Mixamo ---
-        for mixamo_name, our_name in IK_MAP.items():
-            mixamo_bone = mixamo_armature.pose.bones.get(mixamo_name)
-            our_bone = our_armature.pose.bones.get(our_name)
-            if mixamo_bone is None or our_bone is None:
-                continue
-            rest = mixamo_rest.get(mixamo_name)
-            if rest is None:
-                continue
-            # Posição do membro em espaço de mundo do Blender (metros).
-            world_target = mixamo_armature.matrix_world @ mixamo_bone.matrix.translation
-            our_bone.location = _world_to_bone_location(
-                our_bone, world_target, our_rest[our_name])
-            # Rotação do membro, convertida para o espaço do nosso rig.
-            delta_rotation = mixamo_to_our_rotation @ (
-                mixamo_bone.matrix.to_3x3().normalized()
-                @ rest.to_3x3().normalized().inverted())
-            our_bone.rotation_mode = "QUATERNION"
-            our_bone.rotation_quaternion = _world_rotation_to_local(
-                our_bone, delta_rotation, our_rest[our_name])
-            our_bone.keyframe_insert("location", frame=frame)
-            our_bone.keyframe_insert("rotation_quaternion", frame=frame)
-
-        bpy.context.view_layer.update()
-
-    # Assa a pose final: é o que faz o resultado sobreviver ao export, sem
-    # depender das constraints nem dos controles.
-    _bake_full(our_armature, frame_start, frame_end)
-
-    our_action.use_fake_user = True
-    _stash(our_armature, our_action)
-    return frame_end - frame_start + 1
 
 
 def _new_action(armature, name: str):
@@ -384,11 +408,9 @@ def _discard_mixamo(mixamo_armature) -> None:
             for strip in track.strips:
                 if strip.action:
                     names.add(strip.action.name)
-
     for obj in list(bpy.data.objects):
         if obj == mixamo_armature or obj.parent == mixamo_armature:
             bpy.data.objects.remove(obj, do_unlink=True)
-
     for action in list(bpy.data.actions):
         if action.name in names or "mixamo" in action.name.lower():
             bpy.data.actions.remove(action)
@@ -404,8 +426,6 @@ def main(argv: list[str]) -> int:
     our_armature = bpy.data.objects["rig"]
     bpy.context.scene.render.fps = FPS
 
-    # Reponta as texturas para as versões otimizadas. Sem isto o .glb embute os
-    # PNG 4K empacotados na cena: 109 MB de imagem.
     repointed = 0
     for image in list(bpy.data.images):
         base = os.path.basename(image.filepath) if image.filepath else ""
@@ -427,13 +447,9 @@ def main(argv: list[str]) -> int:
     retargeted = 0
     for clip_name, filename in CLIP_SOURCES.items():
         if filename == "__IDLE__":
-            # O idle é gerado, não retargeted de um arquivo.
             frames = _build_idle_clip(our_armature, mixamo_dir, clip_name)
-            if frames > 0:
-                print("  gerado '%s' (%d quadros)" % (clip_name, frames))
-                retargeted += 1
-            else:
-                print("  falhou ao gerar '%s'" % clip_name)
+            print("  gerado '%s' (%d quadros)" % (clip_name, frames))
+            retargeted += 1 if frames > 0 else 0
             continue
         source = os.path.join(mixamo_dir, filename)
         if not os.path.isfile(source):
@@ -448,7 +464,7 @@ def main(argv: list[str]) -> int:
         retargeted += 1
         _discard_mixamo(mixamo_armature)
 
-    print("total de clipes retargeted: %d" % retargeted)
+    print("total de clipes: %d" % retargeted)
     _clear_pose(our_armature)
 
     bpy.ops.object.select_all(action="DESELECT")
