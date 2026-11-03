@@ -57,11 +57,26 @@ testar e desligar sistemas isoladamente.
 ## Compatibilidade com dispositivos modestos
 
 - Renderizador Mobile e texturas comprimidas.
-- Planejamento de cena por chunks e `MultiMeshInstance3D` (MISSÃO 003) para
+- Planejamento de cena por chunks e `MultiMeshInstance3D` (MISSÃO 004) para
   reduzir draw calls.
 - Nenhuma dependência além da própria Godot.
 
 ---
+
+## Sistema de teias (MISSÃO 003)
+
+Ver [`WEB_SWING.md`](WEB_SWING.md) para a física em detalhe. Resumo das decisões
+que afetam a arquitetura:
+
+- **A física é separada dos nós.** `web_physics.gd` só faz contas, então a
+  matemática do pêndulo é testável sem simular o motor.
+- **O controlador não foi reescrito.** O sistema de teia entra por dois pontos:
+  um sinalizador `swing_active` e um `Callable` (`web_stepper`) chamado dentro do
+  `_physics_process` do jogador. O `move_and_slide()` continua sendo dele.
+- **Nada é alocado durante o balanço.** A consulta de física é criada uma vez e
+  a malha da teia é reusada; em repouso o nó fica escondido, custo zero.
+- **A câmera só muda durante o balanço.** Fora dele, o comportamento é idêntico
+  ao da MISSÃO 002.
 
 ## Personagem e movimentação (MISSÃO 002)
 

@@ -40,21 +40,35 @@ Legenda: ✅ concluído · ⏳ aguardando aprovação · ⬜ não iniciado
 - [ ] **Substituir o personagem por um herói original** antes de qualquer
       publicação (o modelo atual é protegido — ver `ASSET_LICENSE.md`).
 
-## MISSÃO 003 — Blocos da cidade ⏳
+## MISSÃO 003 — Sistema de teias e balanço ✅
+
+- [x] Módulo independente em `src/web/` (física, detector, visual, controlador).
+- [x] Disparo pela mira da câmera, com validação de superfície, distância,
+      altura mínima e linha de visão.
+- [x] Balanço por pêndulo físico: gravidade, conservação de velocidade, tensão
+      da corda e comprimento ajustável.
+- [x] Soltura preservando a velocidade e a inércia.
+- [x] Representação visual da teia, atualizada sem alocação por quadro.
+- [x] Câmera dinâmica durante o balanço, preservando o controle manual.
+- [x] Controles de toque (disparar, soltar, ajustar) e teclado para testes.
+- [x] Postura de balanço procedural discreta, sem alterar o rig original.
+- [x] Teste automatizado com 63 verificações; APK e CI verdes.
+
+## MISSÃO 004 — Blocos da cidade ⏳
 
 - [ ] Geração de quarteirões e ruas em grade.
 - [ ] Prédios com `MultiMeshInstance3D` para performance.
 - [ ] Streaming por chunks (carregar/descarregar por proximidade).
 - [ ] Iluminação e névoa otimizadas para Mobile.
 
-## MISSÃO 004 — Sistemas de mundo ⏳
+## MISSÃO 005 — Sistemas de mundo ⏳
 
 - [ ] Ciclo dia/noite.
 - [ ] Colisão e navegação em superfície.
 - [ ] Pontos de interesse e objetivos simples.
 - [ ] HUD mínimo (objetivo atual, minimapa).
 
-## MISSÃO 005 — Conteúdo e polimento ⏳
+## MISSÃO 006 — Conteúdo e polimento ⏳
 
 - [ ] Missões curtas e missões secundárias.
 - [ ] Efeitos visuais e sonoros.

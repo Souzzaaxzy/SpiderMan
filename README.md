@@ -5,12 +5,17 @@ original**, ambientado em uma representação de Nova York. Construído com
 **Godot 4.x** e **GDScript**, mirando o renderizador **Mobile** para rodar bem
 em dispositivos Android modestos.
 
-> **Estado atual — MISSÃO 002 (personagem e movimentação).**
+> **Estado atual — MISSÃO 003 (teias e balanço).**
 > O personagem 3D está **importado, com esqueleto de 366 ossos e quatro
 > animações** (`idle`, `walk`, `run`, `jump`), movimentação em terceira pessoa,
 > controles touchscreen, câmera, pulo e um cenário de teste. Os clipes são
 > gerados no Blender e assados no `.glb`, porque o rig depende de constraints
 > que não existem em glTF.
+>
+> A **MISSÃO 003** acrescentou o sistema de teias: disparo com validação de
+> ancoragem, balanço por pêndulo físico, soltura preservando a velocidade,
+> linha visual da teia, câmera dinâmica e controles de toque. Veja
+> [`docs/WEB_SWING.md`](docs/WEB_SWING.md).
 >
 > ⚠️ O modelo é uma réplica de personagem protegido (Marvel/Sony), fornecido para
 > protótipo privado. **Não publicar nem distribuir.** Veja
@@ -82,6 +87,11 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │   │   ├── player_hud.gd
 │   │   ├── touch_joystick.gd
 │   │   └── touch_look_area.gd
+│   ├── web/                   # Sistema de teias e balanço
+│   │   ├── web_swing_controller.gd
+│   │   ├── web_anchor_detector.gd
+│   │   ├── web_physics.gd
+│   │   └── web_visual.gd
 │   └── modules/               # Um diretório por sistema de gameplay
 │       └── gameplay/          # Instancia cenário + personagem no boot
 ├── assets/
@@ -96,6 +106,7 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 ├── docs/
 │   ├── ROADMAP.md
 │   ├── ARCHITECTURE.md
+│   ├── WEB_SWING.md           # Física e decisões do sistema de teias
 │   └── ASSET_LICENSE.md       # Licenças e limitações dos assets externos
 ├── build/android/             # Saída dos APKs (não versionada)
 └── .github/workflows/         # CI: headless + teste funcional + exportação de APK
@@ -130,10 +141,11 @@ controles de toque, no próprio motor):
 
 ```bash
 godot --headless --path . --script res://tools/tests/player_smoke_test.gd
+godot --headless --path . --script res://tools/tests/web_swing_test.gd
 ```
 
-O teste imprime cada verificação e termina com código de saída 1 se alguma
-falhar.
+Cada teste imprime suas verificações e termina com código de saída 1 se alguma
+falhar. Hoje são 50 verificações do personagem e 63 do sistema de teias.
 
 ## Controles
 
@@ -143,6 +155,9 @@ falhar.
 | Girar a câmera | arrastar na metade direita da tela | botão direito do mouse |
 | Pular | botão **Pular** | `Espaço` |
 | Correr | botão **Correr** | `Shift` |
+| Disparar teia | botão **Teia** | `E` |
+| Soltar teia | botão **Soltar** | `Q` |
+| Ajustar teia | controle deslizante | `R` recolhe / `F` afrouxa |
 
 ## Otimização de texturas
 
@@ -230,7 +245,7 @@ godot --headless --path . --export-debug "Android" build/android/SpiderManNewLif
 
 | Workflow | Gatilho | O que faz |
 | --- | --- | --- |
-| `ci.yml` | push / pull request | Importa o projeto, valida execução headless, roda o teste funcional do personagem e exporta um APK de debug como artefato. |
+| `ci.yml` | push / pull request | Importa o projeto, valida execução headless, roda os testes do personagem e do sistema de teias, e exporta um APK de debug como artefato. |
 
 Os workflows baixam o Godot 4.7.2 e os export templates automaticamente, então
 não exigem nenhum binário versionado no repositório.
@@ -253,4 +268,5 @@ não exigem nenhum binário versionado no repositório.
 
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — etapas de desenvolvimento.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — decisões técnicas.
+- [`docs/WEB_SWING.md`](docs/WEB_SWING.md) — física do balanço e sistema de teias.
 - [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md) — licenças e limitações de uso.
