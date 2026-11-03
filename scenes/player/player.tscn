@@ -1,13 +1,14 @@
-[gd_scene load_steps=14 format=3 uid="uid://bplayer0newlife1"]
+[gd_scene load_steps=15 format=3 uid="uid://bplayer0newlife1"]
 
 [ext_resource type="Script" path="res://src/player/player_controller.gd" id="1_controller"]
-[ext_resource type="Script" path="res://src/player/player_animation.gd" id="2_animation"]
+[ext_resource type="Script" path="res://src/animation/player_animation_controller.gd" id="2_animation"]
 [ext_resource type="Script" path="res://src/camera/third_person_camera.gd" id="3_camera"]
 [ext_resource type="Script" path="res://src/ui/player_hud.gd" id="4_hud"]
 [ext_resource type="Script" path="res://src/ui/touch_joystick.gd" id="5_joystick"]
 [ext_resource type="Script" path="res://src/ui/touch_look_area.gd" id="6_look"]
 [ext_resource type="PackedScene" uid="uid://cpulppwrab7qi" path="res://assets/models/player/spiderman_newlife.glb" id="7_model"]
 [ext_resource type="PackedScene" uid="uid://cweb0newlife001" path="res://scenes/player/web_swing.tscn" id="8_web"]
+[ext_resource type="Script" path="res://src/animation/player_animation_ik.gd" id="9_anim_ik"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.38
@@ -47,6 +48,13 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
 [node name="AnimationDriver" type="Node" parent="."]
 script = ExtResource("2_animation")
 animation_player_path = NodePath("../Visual/Model/AnimationPlayer")
+web_path = NodePath("../WebSwing")
+
+[node name="AnimationIK" type="Node" parent="."]
+script = ExtResource("9_anim_ik")
+controller_path = NodePath("..")
+web_path = NodePath("../WebSwing")
+skeleton_path = NodePath("../Visual/Model/rig/Skeleton3D")
 
 [node name="CameraRig" type="Node3D" parent="."]
 script = ExtResource("3_camera")
@@ -164,6 +172,11 @@ theme_override_constants/separation = 16
 custom_minimum_size = Vector2(144, 140)
 layout_mode = 2
 text = "TEIA"
+
+[node name="ZipButton" type="Button" parent="Hud/Root/Web"]
+custom_minimum_size = Vector2(144, 72)
+layout_mode = 2
+text = "ZIP"
 
 [node name="ReelSlider" type="HSlider" parent="Hud/Root/Web"]
 custom_minimum_size = Vector2(144, 48)

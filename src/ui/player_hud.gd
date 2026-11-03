@@ -17,6 +17,7 @@ extends CanvasLayer
 @onready var _jump_button: Button = $Root/Actions/JumpButton
 @onready var _run_button: Button = $Root/Actions/RunButton
 @onready var _web_button: Button = $Root/Web/WebButton
+@onready var _zip_button: Button = $Root/Web/ZipButton
 @onready var _reel_slider: HSlider = $Root/Web/ReelSlider
 
 var _controller: Node
@@ -42,8 +43,10 @@ func _ready() -> void:
 	# comportamento de segurar/soltar com um único botão.
 	_web_button.button_down.connect(_on_web_pressed)
 	_web_button.button_up.connect(_on_web_released)
+	_zip_button.pressed.connect(_on_zip_pressed)
 	if _web == null:
 		_web_button.disabled = true
+		_zip_button.disabled = true
 		_reel_slider.editable = false
 	else:
 		_reel_slider.value_changed.connect(_on_reel_changed)
@@ -77,6 +80,11 @@ func _on_web_pressed() -> void:
 func _on_web_released() -> void:
 	if _web != null:
 		_web.release()
+
+
+func _on_zip_pressed() -> void:
+	if _web != null:
+		_web.zip()
 
 
 ## O controle deslizante vale -1 (afrouxar) a +1 (recolher), com 0 no centro.

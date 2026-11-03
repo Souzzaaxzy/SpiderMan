@@ -1,13 +1,13 @@
 [gd_scene load_steps=4 format=3 uid="uid://cweb0newlife001"]
 
 [ext_resource type="Script" path="res://src/web/web_swing_controller.gd" id="1_swing"]
-[ext_resource type="Script" path="res://src/web/web_anchor_detector.gd" id="2_detector"]
+[ext_resource type="Script" path="res://src/web/web_target_selector.gd" id="2_detector"]
 [ext_resource type="Script" path="res://src/web/web_visual.gd" id="3_visual"]
 
 [node name="WebSwing" type="Node3D"]
 script = ExtResource("1_swing")
 
-[node name="WebAnchorDetector" type="Node3D" parent="."]
+[node name="WebTargetSelector" type="Node3D" parent="."]
 script = ExtResource("2_detector")
 
 [node name="WebVisual" type="Node3D" parent="."]
