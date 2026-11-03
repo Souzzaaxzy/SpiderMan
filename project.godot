@@ -1,0 +1,30 @@
+; Engine configuration file.
+; Spider-Man: New Life — MISSÃO 001 (preparação técnica).
+; Renderer alvo: Mobile (compatibilidade com Android modesto). NÃO usar Forward+.
+
+config_version=5
+
+[application]
+
+config/name="Spider-Man: New Life"
+config/description="Jogo 3D de mundo aberto com um super-herói aracnídeo original, ambientado em uma representação de Nova York."
+config/version="0.1.0"
+run/main_scene="res://scenes/boot/main.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+config/icon="res://icon.svg"
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.047, 0.055, 0.078, 1)
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/handheld/orientation=0
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true

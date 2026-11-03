@@ -1,0 +1,17 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Emblema original do projeto: aracnídeo estilizado. Sem marcas de terceiros. -->
+  <rect width="128" height="128" rx="26" fill="#0d1b2a"/>
+  <circle cx="64" cy="64" r="46" fill="none" stroke="#e63946" stroke-width="4"/>
+  <g fill="#f1faee">
+    <ellipse cx="64" cy="73" rx="10" ry="16"/>
+    <circle cx="64" cy="48" r="9"/>
+  </g>
+  <g stroke="#f1faee" stroke-width="5" stroke-linecap="round" fill="none">
+    <path d="M55 61 L31 47"/>
+    <path d="M55 70 L27 66"/>
+    <path d="M55 80 L31 93"/>
+    <path d="M73 61 L97 47"/>
+    <path d="M73 70 L101 66"/>
+    <path d="M73 80 L97 93"/>
+  </g>
+</svg>

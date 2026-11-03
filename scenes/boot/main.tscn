@@ -1,0 +1,21 @@
+[gd_scene load_steps=3 format=3 uid="uid://c0sp1d3rnewl1"]
+
+[ext_resource type="Script" path="res://src/core/game_bootstrap.gd" id="1_bootstrap"]
+
+[sub_resource type="Environment" id="Environment_boot"]
+background_mode = 1
+background_color = Color(0.047, 0.055, 0.078, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.42, 0.47, 0.56, 1)
+ambient_light_energy = 1.0
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_bootstrap")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_boot")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 6)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]

@@ -1,0 +1,23 @@
+# Godot 4 — cache de importação e metadados gerados
+.godot/
+*.translation
+
+# Saída de exportação (APK/AAB e pacotes)
+build/android/*.apk
+build/android/*.aab
+build/android/*.idsig
+export_presets.cfg.bak
+
+# Chaves de assinatura — NUNCA versionar
+*.keystore
+*.jks
+!debug.keystore
+
+# Sistema operacional / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Memória do agente OpenHands (local, não faz parte do jogo)
+.openhands/
