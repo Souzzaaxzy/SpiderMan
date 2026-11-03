@@ -1,60 +1,95 @@
 class_name WebPhysics
 extends RefCounted
-## Física da teia. Não depende de nós da árvore: só calcula.
+## Física da corda. Não depende de nós da árvore: só calcula.
 ##
-## Modelo: **pêndulo com corda**, com duas correções que fazem o balanço parecer
-## teia em vez de haste de metal:
+## ## Por que a versão anterior teleportava
 ##
-## 1. **A corda só puxa, nunca empurra.** Enquanto o jogador está *dentro* do
-##    raio da corda, ela está frouxa e não faz nada — só a gravidade age. Quando
-##    ele chega ao limite, a corda trava e ele passa a girar no arco. É isso que
-##    dá a sensação de queda livre no início do balanço.
-## 2. **A corda absorve o tranco radial**, como uma corda de verdade esticando,
-##    em vez de cortar a velocidade de forma perfeitamente rígida.
+## A versão anterior fazia `player.global_position = anchor + radial * length`
+## **antes** do `move_and_slide`. Quando a corda era definida com 3,36 m e o
+## jogador estava a 8,46 m da âncora, esse ajuste arrancava o personagem 3,36 m
+## de uma vez, num único quadro, sem que a física do corpo pudesse interferir.
+## Medido: salto de **3,363 m por quadro** (o normal a 20 m/s é 0,33 m).
 ##
-## Atenção à nomenclatura da Godot: `get_bone_global_pose` é relativo ao
-## **esqueleto**, não ao mundo. O que este arquivo recebe já é posição de mundo.
+## ## O que esta versão faz em vez disso
+##
+## A restrição não move mais o jogador. Ela só **devolve a velocidade corrigida**:
+## a componente que aponta para fora da esfera é removida (uma corda não empurra).
+## Quem move o jogador é o `move_and_slide`, como em qualquer outro movimento.
+## A posição só é corrigida por último recurso, quando o erro já é grande, e
+## mesmo aí por um deslocamento pequeno e limitado por quadro.
+##
+## Consequência: o arco é resultado da integração da física, não de um
+## reposicionamento. É o que dá a sensação de peso em vez de "deslizar no trilho".
 
-## Velocidade máxima permitida, em m/s. Acima disso o passo é limitado, para o
-## pêndulo não explodir em quadros longos (comum em Android modesto).
+## Velocidade máxima permitida, em m/s. Acima disso o passo é limitado, para a
+## simulação não divergir em quadros longos (comum em Android modesto).
 const MAX_SPEED := 60.0
 ## Distância mínima até a ancoragem. Evita divisão por zero e teia "colada".
 const MIN_LENGTH := 2.0
-## Quanto a velocidade pode crescer ao recolher a teia, por passo.
+## Quanto a velocidade pode crescer ao recolher a teia, por quadro.
 const MAX_REEL_BOOST := 1.35
-## Fração da velocidade de afastamento que a corda absorve. Abaixo de 1.0 sobra
-## um resíduo, que é o que dá a sensação de elasticidade no tranco.
-const SNAP_DAMPING := 0.85
+## Fração da velocidade de afastamento que a corda absorve no tranco. Abaixo de
+## 1.0 sobra um resíduo, que é o que dá elasticidade em vez de corte rígido.
+const SNAP_DAMPING := 0.88
+## Correção máxima de posição por quadro, em metros. É o teto que impede o
+## teletransporte: nenhum ajuste pode mover o jogador mais que isto de uma vez.
+const MAX_POSITION_CORRECTION := 0.35
+## A partir de quanto erro de distância a posição precisa ser corrigida.
+const POSITION_TOLERANCE := 0.25
 
 
-## Restringe o jogador à corda. Só age quando a corda está esticada.
+## Restringe o jogador à corda **sem mover a posição**.
 ##
-## Devolve `[posição_corrigida, velocidade]`. Se o jogador está dentro do raio, a
-## posição e a velocidade voltam intactas — a corda está frouxa e não interfere.
-static func apply_rope_constraint(player_position: Vector3, velocity: Vector3,
+## Devolve `[velocidade_corrigida, erro_de_distancia]`. O erro é positivo quando
+## o jogador está além do alcance da corda. Quem decide o que fazer com o erro é
+## o controlador: a posição é corrigida à parte, e sempre limitada.
+##
+## Enquanto o jogador está dentro do raio, nada é alterado: a corda está frouxa.
+static func constrain_velocity(velocity: Vector3, player_position: Vector3,
 		anchor: Vector3, length: float, slack: float = 0.0) -> Array:
 	var offset := player_position - anchor
 	var distance := offset.length()
 	if distance < 0.0001:
-		return [player_position, velocity]
+		return [velocity, 0.0]
 
 	var limit := length + slack
-	if distance <= limit:
+	var overshoot := distance - limit
+	if overshoot <= 0.0:
 		# Corda frouxa: não puxa nem empurra.
-		return [player_position, velocity]
+		return [velocity, overshoot]
 
 	var radial := offset / distance
-	var corrected := anchor + radial * limit
-
 	var radial_speed := velocity.dot(radial)
 	var constrained := velocity
 	if radial_speed > 0.0:
 		constrained = velocity - radial * radial_speed * SNAP_DAMPING
-	return [corrected, constrained]
+	return [constrained, overshoot]
+
+
+## Correção de posição para trazer o jogador de volta ao alcance da corda.
+##
+## Devolve um deslocamento **limitado** por `MAX_POSITION_CORRECTION`. É o que
+## impede o salto: por maior que seja o erro, o jogador nunca é movido mais que
+## isso num quadro. O resto é resolvido nos quadros seguintes, suavemente.
+static func position_correction(player_position: Vector3, anchor: Vector3,
+		length: float, slack: float = 0.0) -> Vector3:
+	var offset := player_position - anchor
+	var distance := offset.length()
+	if distance < 0.0001:
+		return Vector3.ZERO
+
+	var limit := length + slack
+	var overshoot := distance - limit
+	if overshoot <= POSITION_TOLERANCE:
+		return Vector3.ZERO
+
+	var radial := offset / distance
+	var correction := -radial * minf(overshoot, MAX_POSITION_CORRECTION)
+	return correction
 
 
 ## Ao mudar o comprimento, preserva o momento angular (v · r constante), que é o
-## que dá o "impulso" de velocidade ao recolher a teia no meio do balanço.
+## que dá o impulso de velocidade ao recolher a teia no meio do balanço.
 static func apply_length_change(velocity: Vector3, old_length: float,
 		new_length: float) -> Vector3:
 	if new_length <= 0.0001 or is_equal_approx(old_length, new_length):
@@ -71,8 +106,7 @@ static func clamp_speed(velocity: Vector3, maximum: float = MAX_SPEED) -> Vector
 	return velocity
 
 
-## Velocidade tangencial (sem a componente radial), útil para medir o quanto o
-## balanço está rendendo.
+## Velocidade tangencial (sem a componente radial). É o que o balanço rende.
 static func tangential_speed(velocity: Vector3, player_position: Vector3,
 		anchor: Vector3) -> float:
 	var offset := player_position - anchor
@@ -88,11 +122,7 @@ static func height_below_anchor(player_position: Vector3, anchor: Vector3) -> fl
 
 
 ## Comprimento de corda que faz o ponto mais baixo do arco ficar acima de uma
-## altura mínima.
-##
-## O fundo do arco é `anchor.y - length`. Se isso ficar abaixo do chão, o jogador
-## é arrastado por ele em vez de balançar — foi exatamente o defeito relatado.
-## Esta função encurta a corda para o arco caber acima do piso.
+## altura mínima. Sem isto o arco desce abaixo do piso e o jogador é arrastado.
 static func safe_length(anchor: Vector3, desired_length: float,
 		minimum_height: float) -> float:
 	var available := anchor.y - minimum_height
@@ -104,3 +134,19 @@ static func safe_length(anchor: Vector3, desired_length: float,
 ## Altura do ponto mais baixo que o arco alcança com esta corda.
 static func arc_lowest_point(anchor: Vector3, length: float) -> float:
 	return anchor.y - length
+
+
+## Comprimento de corda que faz o arco passar pela posição atual do jogador, sem
+## puxá-lo. Usado ao prender a teia: o comprimento nasce igual à distância, então
+## **não há tranco nenhum** no momento do disparo.
+static func length_without_snap(player_position: Vector3, anchor: Vector3,
+		minimum: float = MIN_LENGTH) -> float:
+	return maxf(player_position.distance_to(anchor), minimum)
+
+
+## Altura de recuperação: quanto o jogador subiria ao percorrer o arco até o
+## outro lado. Serve para pontuar se a ancoragem vai render deslocamento.
+static func potential_height_gain(player_position: Vector3, anchor: Vector3,
+		length: float) -> float:
+	var lowest := arc_lowest_point(anchor, length)
+	return maxf(0.0, lowest - player_position.y)

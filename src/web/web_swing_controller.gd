@@ -1,62 +1,73 @@
 class_name WebSwingController
 extends Node3D
-## Sistema de teias e balanço.
+## Sistema de teias: balanço e Web Zip.
 ##
-## Coordena detecção de ancoragem, física do pêndulo e representação visual, sem
-## misturar essa lógica ao controlador do jogador: este nó só pede ao
-## PlayerController que aplique a velocidade resultante.
+## ## Controle
 ##
-## Controle: **um único botão**. Segurar dispara e mantém a teia presa; soltar
-## libera. `press()` e `release()` são chamados pela HUD (toque) e pelo teclado.
+## Um botão. `press()` dispara e mantém preso; `release()` solta.
 ##
-## A arquitetura já aceita mais de uma teia: as ancoragens ficam em arranjo e a
-## física é aplicada em laço.
+## ## Como o jogador é movido
+##
+## A corda **não reposiciona** o jogador. Ela devolve a velocidade corrigida, e
+## quem move o corpo é o `move_and_slide` do controlador, como em qualquer outro
+## movimento. Isso acabou com o teletransporte: antes, o ajuste de posição
+## arrancava o personagem 3,36 m num único quadro.
+##
+## A posição só é corrigida quando o erro já passou da tolerância, e mesmo aí por
+## um deslocamento limitado (`MAX_POSITION_CORRECTION`), aplicado **depois** do
+## `move_and_slide`, para respeitar as colisões.
+##
+## ## Arquitetura
+##
+## As ancoragens ficam em arranjo e a física é aplicada em laço, então habilitar
+## uma segunda teia é uma questão de permitir o segundo disparo — não de
+## reescrever a física.
 
-signal web_fired(anchor: Vector3)
+signal web_fired(anchor: Vector3, score: float)
 signal web_released(speed: float)
+signal zip_started(target: Vector3)
+signal zip_finished()
 
-enum State { IDLE, SWINGING }
+enum State { IDLE, SWINGING, ZIPPING }
 
-## Comprimento inicial da corda em relação à distância do disparo. Menor que 1
-## faz o jogador ser puxado levemente para dentro do arco ao prender.
-const INITIAL_LENGTH_RATIO := 0.92
-## Folga da corda, em metros: enquanto o jogador está dentro do raio + folga, a
-## corda está frouxa e não interfere. Dá a sensação de queda livre no início.
-const ROPE_SLACK := 1.2
-## Altura mínima do ponto mais baixo do arco, acima do piso. Sem isto o arco
-## desce abaixo do chão e o jogador é arrastado por ele.
+## Folga da corda: dentro do raio + folga, a corda está frouxa e só a gravidade
+## age. É o que dá a queda livre no início do balanço.
+const ROPE_SLACK := 1.0
+## Altura mínima do ponto mais baixo do arco, acima do piso.
 const MIN_ARC_HEIGHT := 1.6
-
-## Limites do comprimento ajustável, em metros.
+## Limites do comprimento ajustável.
 const MIN_ROPE_LENGTH := 3.0
-const MAX_ROPE_LENGTH := 55.0
-## Quanto o comprimento muda por segundo ao segurar o controle de ajuste.
+const MAX_ROPE_LENGTH := 60.0
+## Quanto o comprimento muda por segundo ao segurar o ajuste.
 const REEL_RATE := 7.0
+
+@export_group("Web Zip")
+## Velocidade máxima do impulso, em m/s.
+@export var zip_max_speed: float = 26.0
+## Aceleração do impulso, em m/s². É o que dá a sensação de "puxada".
+@export var zip_acceleration: float = 55.0
+## Distância em que o impulso termina sozinho.
+@export var zip_arrival_distance: float = 3.5
+## Fração da velocidade lateral preservada durante a puxada.
+@export var zip_lateral_keep: float = 0.35
 
 @export_group("Referências")
 @export var controller_path: NodePath = ^".."
 @export var camera_path: NodePath = ^"../CameraRig/SpringArm3D/Camera3D"
-## Pivô da câmera, onde ficam o alinhamento e a distância dinâmica do balanço.
 @export var camera_rig_path: NodePath = ^"../CameraRig"
-
-@export var detector_path: NodePath = ^"WebAnchorDetector"
+@export var selector_path: NodePath = ^"WebTargetSelector"
 @export var visual_path: NodePath = ^"WebVisual"
-## De onde a teia sai: o osso da mão, quando o modelo tem esqueleto.
 @export var hand_bone_name: StringName = &"hand.r"
-## Altura do ombro em relação à base do jogador, usada como origem da teia
-## enquanto o esqueleto não estiver disponível no primeiro quadro.
 @export var shoulder_height: float = 1.5
 
 @export_group("Balanço")
-## Ganho extra de impulso ao soltar, para o salto render mais. 1.0 = sem ganho.
-@export var release_boost: float = 1.05
-## Suavidade do alinhamento automático da câmera durante o balanço.
-@export var camera_follow_speed: float = 2.5
+## Ganho extra de impulso ao soltar. 1.0 = sem ganho.
+@export var release_boost: float = 1.0
 
 var _controller: CharacterBody3D
 var _camera: Camera3D
 var _camera_rig: Node3D
-var _detector: WebAnchorDetector
+var _selector: WebTargetSelector
 var _visual: WebVisual
 var _skeleton: Skeleton3D
 
@@ -66,30 +77,38 @@ var _rope_lengths: Array[float] = []
 var _anchor_count: int = 0
 var _reel_input: float = 0.0
 var _last_release_speed: float = 0.0
-## Altura mínima que o arco pode alcançar, para não atravessar o piso.
 var _floor_height: float = 0.0
 var _floor_query: PhysicsRayQueryParameters3D
+var _last_score: float = 0.0
+
+## Alvo do Web Zip.
+var _zip_target: Vector3 = Vector3.ZERO
+var _zip_requested: bool = false
+## Movimento desejado pelo jogador, para a seleção de alvo.
+var _desired_direction: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
 	_controller = get_node_or_null(controller_path) as CharacterBody3D
 	_camera = get_node_or_null(camera_path) as Camera3D
 	_camera_rig = get_node_or_null(camera_rig_path)
-	_detector = get_node_or_null(detector_path) as WebAnchorDetector
+	_selector = get_node_or_null(selector_path) as WebTargetSelector
 	_visual = get_node_or_null(visual_path) as WebVisual
 	_skeleton = _find_skeleton(_controller)
 
 	if _controller == null:
 		push_warning("WebSwingController: controlador nao encontrado em '%s'." % controller_path)
 		return
-	# A consulta do chão é criada uma vez e reusada: no Android, criar objetos de
-	# física por quadro gera lixo.
+
 	_floor_query = PhysicsRayQueryParameters3D.new()
 	_floor_query.collide_with_areas = false
 	_floor_query.collide_with_bodies = true
-	# O controlador pede o passo do balanço; assim o sistema de teia não assume o
-	# move_and_slide, que continua sendo responsabilidade dele.
-	_controller.web_stepper = _step_swing
+
+	# O controlador chama estes passos dentro do próprio _physics_process: a corda
+	# corrige a velocidade antes do move_and_slide, e a posição depois.
+	_controller.web_velocity_stepper = _step_swing_velocity
+	_controller.web_position_stepper = _step_swing_position
+	_controller.web_zip_stepper = _step_zip
 
 
 func _find_skeleton(root: Node) -> Skeleton3D:
@@ -105,8 +124,7 @@ func _find_skeleton(root: Node) -> Skeleton3D:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Teclado apenas para testes no PC; no Android o botão da HUD chama os mesmos
-	# métodos públicos.
+	# Teclado para testes no PC. No Android a HUD chama os mesmos métodos.
 	if event is InputEventKey and not event.echo:
 		match event.physical_keycode:
 			KEY_E:
@@ -118,20 +136,32 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_reel_input(1.0 if event.pressed else 0.0)
 			KEY_F:
 				set_reel_input(-1.0 if event.pressed else 0.0)
+			KEY_C:
+				if event.pressed:
+					zip()
 
 
 func _process(_delta: float) -> void:
-	if _state != State.SWINGING:
+	if _visual == null:
 		return
-	if _visual != null:
+	if _state == State.SWINGING:
 		_visual.set_points(hand_position(), _anchors[0])
-	if _camera_rig != null:
-		_camera_rig.align_to_swing(_controller.velocity, _delta_safe())
+		if _camera_rig != null:
+			_camera_rig.align_to_swing(_controller.velocity, _delta_safe())
+	elif _state == State.ZIPPING:
+		_visual.set_points(hand_position(), _zip_target)
+		if _camera_rig != null:
+			_camera_rig.align_to_motion(_controller.velocity, _delta_safe())
+	else:
+		# Fora da teia, o FOV e a distância ainda reagem à velocidade (corrida),
+		# mas sem alinhamento automático: o jogador mantém o controle da câmera.
+		if _camera_rig != null:
+			_camera_rig.align_to_motion(_controller.velocity, _delta_safe())
 
 
-## --- API pública (usada pela HUD e pelos testes) ---
+## --- API pública ---
 
-## Segurar o botão: dispara a teia se ainda não houver, ou recolhe se já houver.
+## Segurar o botão: dispara se não houver teia, ou recolhe se já houver.
 func press() -> void:
 	if _state == State.SWINGING:
 		set_reel_input(1.0)
@@ -146,12 +176,11 @@ func release() -> void:
 		return
 	_state = State.IDLE
 	_anchor_count = 0
-	_last_release_speed = _controller.velocity.length() if _controller != null else 0.0
+	_last_release_speed = _controller.velocity.length()
 
-	if _controller != null:
-		_controller.swing_active = false
-		if release_boost != 1.0:
-			_controller.velocity *= release_boost
+	_controller.swing_active = false
+	if release_boost != 1.0:
+		_controller.velocity *= release_boost
 	if _visual != null:
 		_visual.hide_strand()
 	if _camera_rig != null:
@@ -160,22 +189,23 @@ func release() -> void:
 	web_released.emit(_last_release_speed)
 
 
-## Dispara a teia em direção ao que a câmera aponta. Devolve true se ancorou.
+## Dispara a teia para o melhor ponto disponível, sem exigir mira.
 func fire() -> bool:
-	if _state == State.SWINGING or _controller == null or _detector == null:
+	if _state != State.IDLE or _controller == null or _selector == null:
 		return false
 
 	var exclude: Array[RID] = [_controller.get_rid()]
-	var hit := _detector.find_anchor(_camera, _controller.global_position, exclude)
-	if not hit["valid"]:
+	var choice := _selector.select_target(
+		_controller.global_position, _controller.velocity, _desired_direction,
+		_camera, exclude)
+	if not choice["valid"]:
 		return false
 
-	var anchor: Vector3 = hit["position"]
-	var pivot := body_position()
-	var distance := pivot.distance_to(anchor)
-	var length := clampf(distance * INITIAL_LENGTH_RATIO, MIN_ROPE_LENGTH, MAX_ROPE_LENGTH)
-	# Garante que o fundo do arco fique acima do piso: sem isto o jogador é
-	# arrastado pelo chão em vez de balançar.
+	var anchor: Vector3 = choice["position"]
+	# O comprimento nasce **igual à distância**: prender a teia não move o
+	# jogador nem um milímetro. É o fim do tranco no disparo.
+	var length := WebPhysics.length_without_snap(body_position(), anchor, MIN_ROPE_LENGTH)
+	length = minf(length, MAX_ROPE_LENGTH)
 	length = WebPhysics.safe_length(anchor, length, _floor_height + MIN_ARC_HEIGHT)
 
 	_anchors = [anchor]
@@ -183,15 +213,52 @@ func fire() -> bool:
 	_anchor_count = 1
 	_state = State.SWINGING
 	_controller.swing_active = true
+	_last_score = choice.get("score", 0.0)
 
 	if _visual != null:
 		_visual.show_strand(hand_position(), anchor)
-	web_fired.emit(anchor)
+	web_fired.emit(anchor, _last_score)
 	return true
+
+
+## Web Zip: puxa o jogador na direção de um alvo, com aceleração física.
+func zip() -> bool:
+	if _state != State.IDLE or _controller == null or _selector == null:
+		return false
+
+	var exclude: Array[RID] = [_controller.get_rid()]
+	var choice := _selector.select_target(
+		_controller.global_position, _controller.velocity, _desired_direction,
+		_camera, exclude)
+	if not choice["valid"]:
+		return false
+
+	_zip_target = choice["position"]
+	_state = State.ZIPPING
+	_controller.swing_active = true
+	if _visual != null:
+		_visual.show_strand(hand_position(), _zip_target)
+	zip_started.emit(_zip_target)
+	return true
+
+
+## Interrompe o Web Zip a qualquer momento.
+func cancel_zip() -> void:
+	if _state != State.ZIPPING:
+		return
+	_finish_zip()
 
 
 func is_swinging() -> bool:
 	return _state == State.SWINGING
+
+
+func is_zipping() -> bool:
+	return _state == State.ZIPPING
+
+
+func is_busy() -> bool:
+	return _state != State.IDLE
 
 
 func anchor_count() -> int:
@@ -206,14 +273,25 @@ func rope_length() -> float:
 	return _rope_lengths[0] if _anchor_count > 0 else 0.0
 
 
-## Altura do ponto mais baixo do arco atual.
+func zip_target() -> Vector3:
+	return _zip_target
+
+
+func last_score() -> float:
+	return _last_score
+
+
 func arc_lowest_point() -> float:
 	if _anchor_count == 0:
 		return _floor_height
 	return WebPhysics.arc_lowest_point(_anchors[0], _rope_lengths[0])
 
 
-## Ajusta o comprimento da teia em metros, respeitando os limites e o piso.
+## Direção desejada pelo jogador, usada na seleção de alvo.
+func set_desired_direction(direction: Vector3) -> void:
+	_desired_direction = direction
+
+
 func set_rope_length(value: float) -> void:
 	if _anchor_count == 0:
 		return
@@ -222,33 +300,27 @@ func set_rope_length(value: float) -> void:
 	var old_length := _rope_lengths[0]
 	if is_equal_approx(old_length, new_length):
 		return
-	# Preserva o momento angular: recolher a teia acelera o balanço.
 	_controller.velocity = WebPhysics.apply_length_change(
 		_controller.velocity, old_length, new_length)
 	_rope_lengths[0] = new_length
 
 
-## Entrada contínua de ajuste: -1 afrouxa, +1 recolhe, 0 mantém.
 func set_reel_input(value: float) -> void:
 	_reel_input = clampf(value, -1.0, 1.0)
 
 
-## Centro do corpo do jogador. A corda gira em volta do corpo, não dos pés —
-## pendurar pelo pé é o que fazia o personagem "se arrastar" pelo chão.
+## Centro do corpo. A corda gira em volta dele, não dos pés.
 func body_position() -> Vector3:
 	if _controller == null:
 		return Vector3.ZERO
 	return _controller.global_position + Vector3(0.0, shoulder_height * 0.65, 0.0)
 
 
-## Ponto de origem da teia, no espaço de mundo. Usa o osso da mão quando o
-## esqueleto existe; senão, a altura do ombro.
+## Origem visual da teia: o osso da mão, quando há esqueleto.
 func hand_position() -> Vector3:
 	if _skeleton != null:
 		var bone := _skeleton.find_bone(hand_bone_name)
 		if bone >= 0:
-			# A pose do osso é relativa ao esqueleto, então precisa do transform
-			# global dele para virar posição de mundo.
 			return _skeleton.global_transform * _skeleton.get_bone_global_pose(bone).origin
 	if _controller == null:
 		return Vector3.ZERO
@@ -259,40 +331,89 @@ func release_speed() -> float:
 	return _last_release_speed
 
 
-## --- Passo da física ---
+## --- Passos de física ---
 
-## Aplicado pelo PlayerController dentro do próprio _physics_process, logo após a
-## gravidade e antes do move_and_slide. Devolve false se não há balanço.
-func _step_swing(delta: float) -> bool:
+## Corrige a velocidade **antes** do move_and_slide. Não move ninguém.
+func _step_swing_velocity(delta: float) -> bool:
 	if _state != State.SWINGING or _anchor_count == 0:
 		return false
 
 	_update_floor_reference()
-
 	if _reel_input != 0.0:
 		set_rope_length(_rope_lengths[0] - _reel_input * REEL_RATE * delta)
 
-	# A restrição age sobre o corpo, então medimos a partir dele e devolvemos o
-	# deslocamento para a base do jogador.
 	var pivot := body_position()
 	var velocity := _controller.velocity
-	var correction := Vector3.ZERO
 	for index in _anchor_count:
-		var result := WebPhysics.apply_rope_constraint(
-			pivot, velocity, _anchors[index], _rope_lengths[index], ROPE_SLACK)
-		correction += (result[0] as Vector3) - pivot
-		velocity = result[1]
+		var result := WebPhysics.constrain_velocity(
+			velocity, pivot, _anchors[index], _rope_lengths[index], ROPE_SLACK)
+		velocity = result[0]
 
-	_controller.global_position += correction
 	_controller.velocity = WebPhysics.clamp_speed(velocity)
 	return true
 
 
-## Descobre a altura do piso sob o jogador, para o arco não descer abaixo dele.
+## Corrige a posição **depois** do move_and_slide, de forma limitada.
 ##
-## Um raio para baixo é mais confiável que `is_on_floor`: funciona também no ar
-## (por exemplo, ao disparar a teia depois de saltar de um telhado), onde
-## `is_on_floor` seria falso e a altura ficaria desatualizada.
+## É aqui que mora o fim do teletransporte: por maior que seja o erro, o
+## deslocamento num quadro nunca passa de `MAX_POSITION_CORRECTION`.
+func _step_swing_position(delta: float) -> bool:
+	if _state != State.SWINGING or _anchor_count == 0:
+		return false
+	var pivot := body_position()
+	var correction := Vector3.ZERO
+	for index in _anchor_count:
+		correction += WebPhysics.position_correction(
+			pivot, _anchors[index], _rope_lengths[index], ROPE_SLACK)
+	if correction.is_zero_approx():
+		return true
+	_controller.move_and_collide(correction, false, 0.001, false)
+	return true
+
+
+## Impulso do Web Zip: aceleração contínua na direção do alvo.
+func _step_zip(delta: float) -> bool:
+	if _state != State.ZIPPING:
+		return false
+
+	var to_target := _zip_target - body_position()
+	var distance := to_target.length()
+	if distance < zip_arrival_distance:
+		_finish_zip()
+		return false
+
+	var direction := to_target / distance
+	var velocity := _controller.velocity
+
+	# Separa a velocidade em "na direção do alvo" e "lateral". A puxada só
+	# acelera a primeira; a lateral é amortecida, não zerada — é o que preserva
+	# a inércia em vez de transformar o zip num trilho.
+	var along := direction * velocity.dot(direction)
+	var lateral := velocity - along
+	lateral *= maxf(0.0, 1.0 - (1.0 - zip_lateral_keep) * delta * 4.0)
+
+	var along_speed := along.length()
+	var target_speed := minf(along_speed + zip_acceleration * delta, zip_max_speed)
+	var new_velocity := direction * target_speed + lateral
+
+	# A direção do alvo é considerada "para fora" da corda: o zip puxa, então a
+	# componente de afastamento é preservada aqui (não é uma corda esticada).
+	_controller.velocity = WebPhysics.clamp_speed(new_velocity)
+	_controller.swing_active = true
+	return true
+
+
+func _finish_zip() -> void:
+	_state = State.IDLE
+	_controller.swing_active = false
+	if _visual != null:
+		_visual.hide_strand()
+	if _camera_rig != null:
+		_camera_rig.reset_spring_length()
+	zip_finished.emit()
+
+
+## Altura do piso sob o jogador, por raio para baixo. Funciona também no ar.
 func _update_floor_reference() -> void:
 	if _floor_query == null or _controller == null:
 		return
