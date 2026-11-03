@@ -12,10 +12,8 @@ static var _booted: Array[String] = []
 
 
 ## Registra os módulos que acompanham o build.
-## Intencionalmente vazio: a MISSÃO 001 prepara apenas a infraestrutura e a
-## jogabilidade depende de aprovação antes de ser implementada.
 static func register_builtin_modules() -> void:
-	pass
+	register_module("gameplay", "res://src/modules/gameplay/gameplay_module.tscn")
 
 
 static func register_module(module_id: String, scene_path: String) -> void:

@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://bgameplay0newlife1"]
+
+[ext_resource type="Script" path="res://src/modules/gameplay/gameplay_module.gd" id="1_gameplay"]
+
+[node name="Gameplay" type="Node"]
+script = ExtResource("1_gameplay")
+module_id = "gameplay"
