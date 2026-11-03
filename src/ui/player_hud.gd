@@ -4,6 +4,9 @@ extends CanvasLayer
 ##
 ## Não contém lógica de movimento: apenas conecta os controles de tela aos nós
 ## responsáveis. Os caminhos são exportados para permitir reuso em outras cenas.
+##
+## O botão de teia funciona por **segurar**: pressionar dispara, manter pressionado
+## conserva a teia presa, soltar libera. Um botão só, como pedido.
 
 @export var controller_path: NodePath = ^".."
 @export var camera_path: NodePath = ^"../CameraRig"
@@ -13,8 +16,7 @@ extends CanvasLayer
 @onready var _look_area: TouchLookArea = $Root/LookArea
 @onready var _jump_button: Button = $Root/Actions/JumpButton
 @onready var _run_button: Button = $Root/Actions/RunButton
-@onready var _web_button: Button = $Root/Web/FireButton
-@onready var _release_button: Button = $Root/Web/ReleaseButton
+@onready var _web_button: Button = $Root/Web/WebButton
 @onready var _reel_slider: HSlider = $Root/Web/ReelSlider
 
 var _controller: Node
@@ -36,16 +38,15 @@ func _ready() -> void:
 	if _camera != null:
 		_look_area.look.connect(_on_look_dragged)
 
-	# Controles de teia. Se o modulo nao estiver na cena, os botoes ficam inertes
-	# em vez de quebrar a HUD.
-	if _web != null:
-		_web_button.pressed.connect(_on_web_pressed)
-		_release_button.pressed.connect(_on_release_pressed)
-		_reel_slider.value_changed.connect(_on_reel_changed)
-	else:
+	# Botão de teia: `button_down` dispara, `button_up` solta. Isso dá o
+	# comportamento de segurar/soltar com um único botão.
+	_web_button.button_down.connect(_on_web_pressed)
+	_web_button.button_up.connect(_on_web_released)
+	if _web == null:
 		_web_button.disabled = true
-		_release_button.disabled = true
 		_reel_slider.editable = false
+	else:
+		_reel_slider.value_changed.connect(_on_reel_changed)
 
 
 func _on_joystick_moved(value: Vector2) -> void:
@@ -70,10 +71,10 @@ func _on_run_toggled(pressed: bool) -> void:
 
 func _on_web_pressed() -> void:
 	if _web != null:
-		_web.fire()
+		_web.press()
 
 
-func _on_release_pressed() -> void:
+func _on_web_released() -> void:
 	if _web != null:
 		_web.release()
 
