@@ -29,3 +29,10 @@ assets/models/player/spiderman_newlife_*.png.import
 
 # Memória do agente OpenHands (local, não faz parte do jogo)
 .openhands/
+
+# Cache do Python (ferramentas de build)
+__pycache__/
+*.pyc
+
+# Metadados de importacao dos FBX do Mixamo (gerados no import)
+assets/animations/mixamo/*.fbx.import

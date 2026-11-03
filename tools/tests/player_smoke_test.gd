@@ -316,23 +316,35 @@ func _test_model(player: Node3D) -> void:
 	if animator == null:
 		return
 	var clips := animator.get_animation_list()
-	for expected: StringName in [&"idle", &"walk", &"run", &"jump"]:
-		_check("clipe '%s' presente" % expected, clips.has(expected))
+	_check("biblioteca de animacao carregada", clips.size() >= 10,
+		"(%d clipes)" % clips.size())
+	# O modelo agora traz 15 clipes retargeted do Mixamo. Os nomes vêm da
+	# biblioteca, não fixos no teste: o importador da Godot pode renomear.
 
-	# Parado: idle.
+	var idle_clip: StringName = PlayerAnimationLibrary.resolve("idle", clips)
+	var walk_clip: StringName = PlayerAnimationLibrary.resolve("walk", clips)
+	var run_clip: StringName = PlayerAnimationLibrary.resolve("jog", clips)
+	for pair: Array in [["parado", idle_clip], ["andando", walk_clip], ["correndo", run_clip]]:
+		_check("clipe para %s resolvido" % pair[0], pair[1] != &"", "(%s)" % pair[1])
+
+	# Parado: clipe de repouso.
 	await _reset(player, LANE_FREE)
 	await _wait_physics(20)
-	_check("parado toca 'idle'", animator.current_animation == &"idle", "(%s)" % animator.current_animation)
+	_check("parado toca o clipe de repouso",
+		animator.current_animation == idle_clip, "(%s)" % animator.current_animation)
 
-	# Andando: walk.
+	# Andando.
 	player.set_move_vector(Vector2(0, -1))
 	await _wait_physics(90)
-	_check("andando toca 'walk'", animator.current_animation == &"walk", "(%s)" % animator.current_animation)
+	_check("andando toca o clipe de caminhada",
+		animator.current_animation == walk_clip, "(%s)" % animator.current_animation)
 
-	# Correndo: run.
+	# Correndo.
 	player.set_run_held(true)
 	await _wait_physics(120)
-	_check("correndo toca 'run'", animator.current_animation == &"run", "(%s)" % animator.current_animation)
+	_check("correndo toca um clipe de corrida",
+		animator.current_animation in [run_clip, PlayerAnimationLibrary.resolve("sprint", clips)],
+		"(%s)" % animator.current_animation)
 	player.set_run_held(false)
 	player.set_move_vector(Vector2.ZERO)
 

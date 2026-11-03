@@ -371,9 +371,17 @@ func _test_animation() -> void:
 	print("- Animacoes")
 	var available: Array[StringName] = _animation.available_clips()
 	_check("biblioteca carregada", available.size() > 0, "(%d clipes)" % available.size())
-	_check("os 4 clipes do modelo presentes",
-		available.has(&"idle") and available.has(&"walk")
-		and available.has(&"run") and available.has(&"jump"))
+	# O modelo traz os 15 clipes retargeted do Mixamo. Confere os essenciais,
+	# resolvendo por **estado** (não por nome de clipe: o importador pode renomear).
+	var essential: Array[String] = ["idle", "walk", "jog", "sprint", "turn",
+		"jump_start", "land", "land_roll", "swing_start", "swing_loop",
+		"swing_release", "wall_run"]
+	var unresolved: Array[String] = []
+	for state: String in essential:
+		if PlayerAnimationLibrary.resolve(state, available) == &"":
+			unresolved.append(state)
+	_check("clipes essenciais resolvidos", unresolved.is_empty(),
+		"(%s)" % [unresolved])
 
 	# Retargeting: as animações rodam no rig original, sem substituí-lo.
 	_check("esqueleto original preservado", _skeleton.get_bone_count() == 366,
