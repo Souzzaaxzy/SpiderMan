@@ -327,24 +327,38 @@ func _test_model(player: Node3D) -> void:
 	for pair: Array in [["parado", idle_clip], ["andando", walk_clip], ["correndo", run_clip]]:
 		_check("clipe para %s resolvido" % pair[0], pair[1] != &"", "(%s)" % pair[1])
 
-	# Parado: clipe de repouso.
+	# Parado: o BlendSpace deve estar na ponta "parado".
+	#
+	# Com AnimationTree, `AnimationPlayer.current_animation` fica vazio: quem
+	# controla é a árvore. O que se verifica é o **parâmetro do BlendSpace** e o
+	# estado resolvido.
+	var driver: Node = player.get_node_or_null("AnimationDriver")
 	await _reset(player, LANE_FREE)
-	await _wait_physics(20)
-	_check("parado toca o clipe de repouso",
-		animator.current_animation == idle_clip, "(%s)" % animator.current_animation)
+	await _wait_physics(30)
+	_check("parado entra no estado idle", driver.current_state() == "idle",
+		"(%s, blend=%.2f)" % [driver.current_state(), driver.blend_position()])
 
 	# Andando.
 	player.set_move_vector(Vector2(0, -1))
 	await _wait_physics(90)
-	_check("andando toca o clipe de caminhada",
-		animator.current_animation == walk_clip, "(%s)" % animator.current_animation)
+	var walk_state: String = driver.current_state()
+	_check("andando entra em walk", walk_state == "walk",
+		"(%s, blend=%.2f)" % [walk_state, driver.blend_position()])
 
-	# Correndo.
+	# Correndo: o BlendSpace deve ter avançado no eixo de velocidade.
+	# Reposiciona antes: andar 90 quadros pode ter levado o jogador até um obstáculo.
+	await _reset(player, LANE_FREE)
+	player.set_move_vector(Vector2(0, -1))
 	player.set_run_held(true)
-	await _wait_physics(120)
-	_check("correndo toca um clipe de corrida",
-		animator.current_animation in [run_clip, PlayerAnimationLibrary.resolve("sprint", clips)],
-		"(%s)" % animator.current_animation)
+	await _wait_physics(150)
+	var blend: float = driver.blend_position()
+	var run_state: String = driver.current_state()
+	_check("correndo avanca o blend e entra em jog/sprint",
+		blend > 4.0 and (run_state == "jog" or run_state == "sprint"),
+		"(%s, blend=%.2f m/s)" % [run_state, blend])
+	_check("blend acompacha a velocidade real",
+		absf(blend - minf(player.current_speed(), driver.max_blend_speed)) < 2.5,
+		"(blend=%.2f, velocidade=%.2f)" % [blend, player.current_speed()])
 	player.set_run_held(false)
 	player.set_move_vector(Vector2.ZERO)
 
