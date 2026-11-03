@@ -22,6 +22,12 @@ em dispositivos Android modestos.
 > telhados acessíveis e mobiliário urbano. Veja
 > [`docs/DISTRICT.md`](docs/DISTRICT.md).
 >
+> A **MISSÃO 005** reformulou a movimentação: **fim do teletransporte** (salto
+> por quadro caiu de 3,363 m para 0,351 m), **seleção automática de alvos** sem
+> exigir mira, **Web Zip** por impulso contínuo, câmera com FOV e inclinação
+> dinâmicos e uma máquina de 22 estados de animação. Veja
+> [`docs/MOVEMENT.md`](docs/MOVEMENT.md).
+>
 > ⚠️ O modelo é uma réplica de personagem protegido (Marvel/Sony), fornecido para
 > protótipo privado. **Não publicar nem distribuir.** Veja
 > [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md).
@@ -99,6 +105,10 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │   │   ├── web_anchor_detector.gd
 │   │   ├── web_physics.gd
 │   │   └── web_visual.gd
+│   ├── animation/             # Estados e ajustes procedurais
+│   │   ├── player_animation_controller.gd
+│   │   ├── player_animation_ik.gd
+│   │   └── player_animation_library.gd
 │   ├── world/                 # Região urbana
 │   │   ├── world_manager.gd
 │   │   ├── city_generator.gd
@@ -119,6 +129,8 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │   ├── build_animations.py    # Gera clipes no Blender e exporta o .glb
 │   └── tests/                 # Teste funcional e inspeção, rodados pelo motor
 ├── docs/
+│   ├── MOVEMENT.md            # Física, seleção de alvos e animações
+│   ├── ANIMATIONS.md          # O que falta de animação e como importar
 │   ├── ROADMAP.md
 │   ├── ARCHITECTURE.md
 │   ├── WEB_SWING.md           # Física e decisões do sistema de teias
@@ -162,7 +174,7 @@ godot --headless --path . --script res://tools/tests/city_test.gd
 ```
 
 Cada teste imprime suas verificações e termina com código de saída 1 se alguma
-falhar. Hoje são 50 verificações do personagem, 69 do sistema de teias e 42 do
+falhar. Hoje são 50 verificações do personagem, 82 da movimentação e 42 do
 distrito urbano.
 
 ## Controles
@@ -174,6 +186,7 @@ distrito urbano.
 | Pular | botão **Pular** | `Espaço` |
 | Correr | botão **Correr** | `Shift` |
 | Teia (segurar/soltar) | botão **TEIA** | `E` |
+| Web Zip | botão **ZIP** | `C` |
 | Ajustar comprimento | controle deslizante | `R` recolhe / `F` afrouxa |
 
 ## Otimização de texturas
@@ -287,4 +300,6 @@ não exigem nenhum binário versionado no repositório.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — decisões técnicas.
 - [`docs/WEB_SWING.md`](docs/WEB_SWING.md) — física do balanço e sistema de teias.
 - [`docs/DISTRICT.md`](docs/DISTRICT.md) — dimensões e otimização do distrito urbano.
+- [`docs/MOVEMENT.md`](docs/MOVEMENT.md) — física, seleção de alvos e animações.
+- [`docs/ANIMATIONS.md`](docs/ANIMATIONS.md) — animações que faltam e como importar.
 - [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md) — licenças e limitações de uso.

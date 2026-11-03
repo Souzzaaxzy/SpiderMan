@@ -9,6 +9,10 @@ extends SceneTree
 ## Uso: godot --headless --path . --script res://tools/tests/city_test.gd
 
 const DISTRICT_SCENE := "res://scenes/world/manhattan_district.tscn"
+## Rua junto ao prédio mais alto do distrito. Usada nas posições de teste para o
+## jogador não nascer dentro de um lote (17,4 m de lado), onde a colisão o
+## empurraria para baixo.
+const STREET_X := -28.0
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 
 var _failures: Array[String] = []
@@ -250,20 +254,17 @@ func _test_web_between_buildings() -> void:
 		if candidate.height > tallest.height:
 			tallest = candidate
 
-	# Balanço realista: o jogador está **no ar e bem abaixo do topo**, a uma
-	# distância horizontal da fachada, indo na direção dela. Assim a corda fica
-	# longa e há arco de verdade para percorrer — pendurar-se colado ao topo daria
-	# uma corda de poucos metros e nenhuma velocidade a ganhar.
-	var facade_offset := tallest.size.y * 0.5 + 22.0
-	var start_height := tallest.height * 0.30
-	var start := tallest.center + Vector3(0.0, 0.0, facade_offset)
-	start.y = start_height
+	# Balanço realista: o jogador está **no ar e bem abaixo do topo**, sobre uma
+	# rua, indo na direção do prédio mais alto. A rua é usada de propósito: nascer
+	# sobre um lote (17,4 m de lado) coloca o jogador dentro do prédio, e a colisão
+	# o empurra para baixo.
+	var facade_offset := tallest.size.y * 0.5 + 20.0
+	var start := Vector3(STREET_X, tallest.height * 0.30, tallest.center.z + facade_offset)
 
 	if _web.is_swinging():
 		_web.release()
 	_player.global_position = start
 	_player.swing_active = false
-	# Encara a fachada: yaw 180° aponta para -Z, onde está o prédio.
 	var rig := _player.get_node_or_null("CameraRig") as ThirdPersonCamera
 	var spring := _player.get_node_or_null("CameraRig/SpringArm3D") as SpringArm3D
 	if rig != null:
@@ -307,15 +308,15 @@ func _test_facade_anchoring() -> void:
 	print("- Deteccao de ancoragem nas fachadas")
 	var city: CityGenerator = _district.call("city")
 	var lots: Array = city.lots()
-	var detector := _player.get_node_or_null("WebSwing/WebAnchorDetector")
-	_check("detector presente", detector != null)
+	var detector := _player.get_node_or_null("WebSwing/WebTargetSelector")
+	_check("seletor de alvos presente", detector != null)
 	if detector == null or lots.is_empty():
 		return
 
 	# As fachadas precisam ser StaticBody3D, senão o detector as recusa.
 	var building_body := _district.get_node_or_null("District/BuildingColliders")
 	var is_static := building_body is StaticBody3D
-	_check("fachadas sao StaticBody3D (aceitas pelo detector)", is_static)
+	_check("fachadas sao StaticBody3D (aceitas pelo seletor)", is_static)
 
 	# Varre alguns prédios e conta quantos aceitam ancoragem a partir do ar.
 	# A câmera é posicionada olhando para o prédio: o `yaw` da Godot aponta para
@@ -352,8 +353,9 @@ func _test_facade_anchoring() -> void:
 			_web.release()
 			await _wait(3)
 		else:
-			var hit: Dictionary = detector.find_anchor(
-				_camera, _player.global_position, exclude_rids)
+			var hit: Dictionary = detector.select_target(
+				_player.global_position, _player.velocity, Vector3.FORWARD,
+				_camera, exclude_rids)
 			reasons.append(str(hit.get("reason", "?")))
 
 	_check("fachadas aceitam ancoragem", accepted >= 3,
@@ -372,10 +374,11 @@ func _test_facade_anchoring() -> void:
 	if spring2 != null:
 		spring2.rotation = Vector3(deg_to_rad(80.0), 0.0, 0.0)
 	await _wait(3)
-	var sky_hit: Dictionary = detector.find_anchor(
-		_camera, _player.global_position, exclude_rids)
+	var sky_hit: Dictionary = detector.select_target(
+		_player.global_position, _player.velocity, Vector3.FORWARD,
+		_camera, exclude_rids)
 	_check("nao ancora no ceu aberto", not _web.fire(),
-		"(detector: %s; direcao y=%.2f)" % [
+		"(seletor: %s; direcao y=%.2f)" % [
 			sky_hit.get("reason", "valido"), (-_camera.global_transform.basis.z).y])
 
 

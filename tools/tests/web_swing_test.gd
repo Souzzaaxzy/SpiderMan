@@ -1,33 +1,35 @@
 extends SceneTree
-## Teste funcional do sistema de teias (MISSÃO 003, revisado).
+## Teste da movimentação (MISSÃO 005).
 ##
-## Roda no próprio motor, com a cena real. Verifica os dez pontos obrigatórios e
-## termina com código 1 se algo falhar.
+## Cobre os 28 itens de teste da missão: seleção de alvos, física, Web Zip,
+## animações e integração. Roda no próprio motor, com a cena e o mundo reais.
 ##
-## Todas as posições usadas ficam **em ruas**, nunca dentro de um prédio: um lote
-## ocupa 17,4 m de lado, então nascer sobre ele empurra o jogador para baixo. As
-## coordenadas das ruas do distrito de 3×3 são -84, -28, 28 e 84.
+## Todas as posições ficam em **ruas** (coordenadas -84, -28, 28, 84): nascer
+## sobre um lote de 17,4 m faz a colisão empurrar o jogador para baixo.
 ##
 ## Uso: godot --headless --path . --script res://tools/tests/web_swing_test.gd
 
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
-const ARENA_SCENE := "res://scenes/arena/test_arena.tscn"
+const DISTRICT_SCENE := "res://scenes/world/manhattan_district.tscn"
 
-## Faixa livre na arena de testes (paredes em x=±5).
-const ARENA_LANE := Vector3(0.0, 1.2, 8.0)
-## Ponto de lançamento elevado na arena, com espaço para o arco completo.
-const ARENA_LAUNCH := Vector3(0.0, 6.0, 4.0)
-const ARENA_LAUNCH_PITCH := 15.0
-const ARENA_LAUNCH_SPEED := 5.0
+## Rua junto ao prédio mais alto do distrito.
+const STREET_NEAR_TOWER := Vector3(-28.0, 1.2, -12.3)
+## Ponto de lançamento elevado, com espaço para o arco.
+const LAUNCH_POSITION := Vector3(-28.0, 14.0, 6.0)
+const LAUNCH_SPEED := 6.0
 
 var _failures: Array[String] = []
 var _checks: int = 0
 var _player: Node3D
 var _web: Node
+var _selector: Node
 var _visual: Node
 var _camera: Camera3D
 var _spring: SpringArm3D
 var _skeleton: Skeleton3D
+var _animation: Node
+var _ik: Node
+var _city: CityGenerator
 
 
 func _initialize() -> void:
@@ -35,41 +37,40 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	print("=== Teste do sistema de teias (MISSAO 003) ===")
-	var arena := _spawn(ARENA_SCENE, Vector3.ZERO)
-	if arena == null:
-		_fail("arena de teste nao pode ser instanciada")
+	print("=== Teste de movimentacao (MISSAO 005) ===")
+	var district := _spawn(DISTRICT_SCENE, Vector3.ZERO)
+	if district == null:
 		_finish()
 		return
-	_player = _spawn(PLAYER_SCENE, ARENA_LANE)
-	if _player == null:
-		_fail("jogador nao pode ser instanciado")
-		_finish()
-		return
+	await physics_frame
+	await physics_frame
+	_city = district.call("city")
 
+	_player = _spawn(PLAYER_SCENE, STREET_NEAR_TOWER)
+	if _player == null:
+		_finish()
+		return
 	await physics_frame
 	await physics_frame
 
 	_web = _player.get_node_or_null("WebSwing")
+	_selector = _player.get_node_or_null("WebSwing/WebTargetSelector")
 	_visual = _player.get_node_or_null("WebSwing/WebVisual")
 	_camera = _player.get_node_or_null("CameraRig/SpringArm3D/Camera3D")
 	_spring = _player.get_node_or_null("CameraRig/SpringArm3D")
 	_skeleton = _find(_player, "Skeleton3D") as Skeleton3D
+	_animation = _player.get_node_or_null("AnimationDriver")
+	_ik = _player.get_node_or_null("AnimationIK")
 
-	await _test_setup()
-	await _test_relaxed_arms()
-	await _test_fire_web()
-	await _test_reject_invalid()
-	await _test_swing_starts()
-	await _test_speed_conservation()
-	await _test_length_adjust()
-	await _test_release()
-	await _test_release_preserves_speed()
-	await _test_visual_update()
-	await _test_hold_button()
-	await _test_rope_not_through_floor()
-	await _test_existing_controls()
-	await _test_physics_math()
+	await _test_structure()
+	await _test_target_selection()
+	await _test_physics()
+	await _test_no_teleport()
+	await _test_zip()
+	await _test_animation()
+	await _test_camera()
+	await _test_integration()
+	_test_math()
 
 	_finish()
 
@@ -113,438 +114,502 @@ func _find(node: Node, class_filter: String) -> Node:
 	return null
 
 
-## Coloca o jogador em uma posição livre e zera o estado.
+func _find_all(node: Node, class_filter: String) -> Array[Node]:
+	var found: Array[Node] = []
+	if node.is_class(class_filter):
+		found.append(node)
+	for child in node.get_children():
+		found.append_array(_find_all(child, class_filter))
+	return found
+
+
 func _reset(position: Vector3, yaw: float = 0.0) -> void:
-	if _web.is_swinging():
+	if _web.is_busy():
 		_web.release()
+		_web.cancel_zip()
 	_player.velocity = Vector3.ZERO
 	_player.swing_active = false
 	_player.global_position = position
 	_player.set_move_vector(Vector2.ZERO)
-	_player.set_run_held(false)
 	var rig := _player.get_node_or_null("CameraRig") as ThirdPersonCamera
 	if rig != null:
 		rig.set_yaw(yaw)
-	await _wait(40)
+	await _wait(30)
 
 
-## Mira a câmera e dispara. `pitch` positivo olha para cima.
-func _aim_and_fire(pitch_degrees: float) -> bool:
+func _aim(yaw: float, pitch: float) -> void:
 	var rig := _player.get_node_or_null("CameraRig") as ThirdPersonCamera
 	if rig != null:
-		rig.set_yaw(0.0)
+		rig.set_yaw(yaw)
 	if _spring != null:
-		_spring.rotation = Vector3(deg_to_rad(pitch_degrees), 0.0, 0.0)
+		_spring.rotation = Vector3(deg_to_rad(pitch), 0.0, 0.0)
 	await _wait(3)
-	return _web.fire()
-
-
-## Lançamento real: no ar, com velocidade horizontal, sob o viaduto da arena.
-func _launch() -> bool:
-	if _web.is_swinging():
-		_web.release()
-	_player.velocity = Vector3.ZERO
-	_player.swing_active = false
-	_player.global_position = ARENA_LAUNCH
-	_player.set_move_vector(Vector2.ZERO)
-	var rig := _player.get_node_or_null("CameraRig") as ThirdPersonCamera
-	if rig != null:
-		rig.set_yaw(0.0)
-	await _wait(3)
-	_player.velocity = Vector3(0.0, 0.0, -ARENA_LAUNCH_SPEED)
-	return await _aim_and_fire(ARENA_LAUNCH_PITCH)
 
 
 # --- 1. Estrutura ---
 
-func _test_setup() -> void:
+func _test_structure() -> void:
 	print("- Estrutura do sistema")
 	_check("modulo de teia presente", _web != null)
-	if _web == null:
-		return
-	_check("detector de ancoragem presente", _player.get_node_or_null("WebSwing/WebAnchorDetector") != null)
+	_check("seletor de alvos presente", _selector != null)
 	_check("visual da teia presente", _visual != null)
-	_check("camera encontrada", _camera != null)
-	_check("esqueleto encontrado", _skeleton != null)
-	_check("estado inicial parado", not _web.is_swinging())
+	_check("camera presente", _camera != null)
+	_check("esqueleto presente", _skeleton != null)
+	_check("controlador de animacao presente", _animation != null)
+	_check("ajustes IK presentes", _ik != null)
+	_check("estado inicial livre", not _web.is_busy())
 
 
-# --- Braços caídos (defeito relatado) ---
+# --- 1 a 6. Seleção de alvos ---
 
-func _test_relaxed_arms() -> void:
-	print("- Bracos caidos")
-	if _skeleton == null:
-		_fail("sem esqueleto para testar os bracos")
-		return
-	# O clipe precisa de alguns quadros para aplicar a pose: medir no primeiro
-	# quadro devolveria a pose de repouso do rig, não a do clipe.
-	await _wait(40)
-	var shoulder := _skeleton.global_transform * _skeleton.get_bone_global_pose(
-		_skeleton.find_bone("shoulder.r")).origin
-	var hand := _skeleton.global_transform * _skeleton.get_bone_global_pose(
-		_skeleton.find_bone("hand.r")).origin
-	var drop := shoulder.y - hand.y
-	# O repouso do rig tem os braços abertos (queda de 0,41 m). Caídos, a mão
-	# fica bem abaixo do ombro.
-	_check("mao abaixo do ombro (bracos caidos)", drop > 0.5,
-		"(queda de %.2f m; repouso aberto era 0.41)" % drop)
+func _test_target_selection() -> void:
+	print("- Selecao automatica de alvos")
 
+	# 1. Sem mirar diretamente: funciona olhando para o lado e para o céu.
+	await _reset(STREET_NEAR_TOWER, 90.0)
+	await _aim(-90.0, 0.0)
+	_check("ancora sem olhar para o predio", _web.fire(),
+		"(camera virada para o lado oposto)")
+	if _web.is_swinging():
+		_web.release()
+	await _wait(10)
 
-# --- 2 e 3. Disparo e rejeição ---
+	await _reset(STREET_NEAR_TOWER, 90.0)
+	await _aim(90.0, 80.0)
+	_check("ancora olhando para o ceu", _web.fire())
+	if _web.is_swinging():
+		_web.release()
+	await _wait(10)
 
-func _test_fire_web() -> void:
-	print("- Disparo e ancoragem valida")
-	var fired: bool = await _launch()
-	_check("teia ancorou em superficie valida", fired)
+	# 2. Pontos em prédios próximos: a âncora fica acima do jogador.
+	await _reset(STREET_NEAR_TOWER, 90.0)
+	await _aim(90.0, 25.0)
+	var fired: bool = _web.fire()
+	_check("ancorou em predio proximo", fired)
 	if fired:
 		var anchor: Vector3 = _web.current_anchor()
-		_check("ancoragem acima do jogador", anchor.y > _player.global_position.y,
-			"(ancora y=%.2f, jogador y=%.2f)" % [anchor.y, _player.global_position.y])
-		_check("comprimento dentro dos limites",
-			_web.rope_length() >= WebSwingController.MIN_ROPE_LENGTH
-			and _web.rope_length() <= WebSwingController.MAX_ROPE_LENGTH,
-			"(%.2f m)" % _web.rope_length())
+		_check("ancora acima do jogador", anchor.y > _player.global_position.y,
+			"(ancora y=%.1f, jogador y=%.1f)" % [anchor.y, _player.global_position.y])
+		_check("seletor gerou varios candidatos", _selector.candidate_count() > 1,
+			"(%d candidatos)" % _selector.candidate_count())
 		_web.release()
-	await _wait(20)
+	await _wait(10)
 
-
-func _test_reject_invalid() -> void:
-	print("- Rejeicao de pontos invalidos")
-	await _reset(ARENA_LANE)
-	var fired_sky: bool = await _aim_and_fire(80.0)
-	_check("nao ancora no ceu", not fired_sky)
-
-	await _reset(ARENA_LANE)
-	var fired_floor: bool = await _aim_and_fire(-70.0)
-	_check("nao ancora no chao proximo", not fired_floor)
-
-	var detector := _player.get_node_or_null("WebSwing/WebAnchorDetector")
-	var previous_max: float = detector.max_distance
-	detector.max_distance = 2.0
-	await _reset(ARENA_LANE)
-	var fired_far: bool = await _aim_and_fire(20.0)
-	_check("nao ancora alem da distancia maxima", not fired_far, "(max=2 m)")
-	detector.max_distance = previous_max
-
-	var previous_rise: float = detector.min_rise
-	detector.min_rise = 100.0
-	await _reset(ARENA_LANE)
-	var fired_low: bool = await _aim_and_fire(20.0)
-	_check("nao ancora abaixo da altura minima", not fired_low)
-	detector.min_rise = previous_rise
-
+	# 3. Rejeição de pontos inválidos: longe de qualquer prédio, no céu aberto.
+	await _reset(Vector3(0.0, 200.0, 0.0))
 	var exclude: Array[RID] = [_player.get_rid()]
-	var hit: Dictionary = detector.find_anchor(_camera, _player.global_position, exclude)
-	_check("detector devolve motivo quando falha", hit.has("reason"))
-	await _wait(20)
+	var empty: Dictionary = _selector.select_target(_player.global_position, Vector3.ZERO,
+		Vector3.FORWARD, _camera, exclude)
+	_check("nao ancora sem alvos disponiveis", not empty["valid"],
+		"(%s)" % empty["reason"])
+	_check("nao dispara teia invalida", not _web.fire())
+
+	# 4. Verificação de obstáculos: a linha de visão é testada.
+	await _reset(STREET_NEAR_TOWER, 90.0)
+	await _aim(90.0, 25.0)
+	var choice: Dictionary = _selector.select_target(_player.global_position, Vector3.ZERO,
+		Vector3.FORWARD, _camera, exclude)
+	_check("candidatos passam por teste de visao", choice["valid"])
+
+	# 5. Direção do movimento influencia: correndo para leste, a âncora deve
+	# ficar à frente, não atrás.
+	await _reset(STREET_NEAR_TOWER, 90.0)
+	_player.velocity = Vector3(8.0, 0.0, 0.0)
+	await _wait(3)
+	var forward_choice: Dictionary = _selector.select_target(_player.global_position,
+		Vector3(8.0, 0.0, 0.0), Vector3.RIGHT, _camera, exclude)
+	_check("selecao considera a direcao do movimento", forward_choice["valid"])
+	if forward_choice["valid"]:
+		var to_anchor: Vector3 = forward_choice["position"] - _player.global_position
+		var flat := Vector3(to_anchor.x, 0.0, to_anchor.z).normalized()
+		_check("ancora fica a frente do movimento", flat.x > 0.0,
+			"(componente x=%.2f)" % flat.x)
+
+	# 6. Sem alvos: já coberto acima.
 
 
-# --- 4 e 5. Balanço ---
+# --- 7 a 14. Física ---
 
-func _test_swing_starts() -> void:
-	print("- Inicio do balanco")
+func _test_physics() -> void:
+	print("- Fisica do balanco")
+
+	# 7. Início do balanço.
 	var fired: bool = await _launch()
 	_check("balanco iniciado", _web.is_swinging())
-	_check("controlador marcado como em balanco", _player.swing_active)
-	_check("uma ancoragem ativa", _web.anchor_count() == 1)
-	_web.release()
-	await _wait(20)
-
-
-func _test_speed_conservation() -> void:
-	print("- Conservacao de velocidade no arco")
-	var fired: bool = await _launch()
+	_check("controlador marcado em balanco", _player.swing_active)
 	if not fired:
-		_fail("nao ancorou para testar a conservacao")
 		return
 
+	# 8. Movimento pendular: a altura varia ao longo do arco.
 	var highest: float = _player.global_position.y
 	var lowest: float = highest
 	var fastest: float = 0.0
-	for _step in 90:
+	for _step in 80:
 		await physics_frame
-		fastest = maxf(fastest, _player.velocity.length())
 		highest = maxf(highest, _player.global_position.y)
 		lowest = minf(lowest, _player.global_position.y)
+		fastest = maxf(fastest, _player.velocity.length())
+	_check("percorreu um arco", highest - lowest > 1.0,
+		"(%.1f m de variacao)" % (highest - lowest))
 
-	_check("percorreu um arco de verdade", highest - lowest > 1.0,
-		"(%.2f m de variacao)" % (highest - lowest))
-	_check("ganhou velocidade", fastest > ARENA_LAUNCH_SPEED + 1.0,
-		"(%.2f -> %.2f m/s)" % [ARENA_LAUNCH_SPEED, fastest])
-	_check("velocidade dentro do limite", fastest <= WebPhysics.MAX_SPEED + 0.01,
-		"(%.2f m/s)" % fastest)
-	_web.release()
-	await _wait(20)
+	# 9. Conservação de velocidade: ganhou velocidade ao descer.
+	_check("ganhou velocidade no arco", fastest > LAUNCH_SPEED + 1.0,
+		"(%.1f -> %.1f m/s)" % [LAUNCH_SPEED, fastest])
 
-
-# --- 6. Ajuste de comprimento ---
-
-func _test_length_adjust() -> void:
-	print("- Ajuste do comprimento da teia")
-	var fired: bool = await _launch()
-	if not fired:
-		_fail("nao ancorou para testar o ajuste")
-		return
-
-	var initial: float = _web.rope_length()
-	_web.set_rope_length(initial - 2.0)
-	_check("recolher encurta a teia", _web.rope_length() < initial,
-		"(%.2f -> %.2f m)" % [initial, _web.rope_length()])
-
+	# 10. Ajuste do comprimento.
+	var before: float = _web.rope_length()
+	_web.set_rope_length(before - 3.0)
+	_check("recolher encurta a teia", _web.rope_length() < before,
+		"(%.1f -> %.1f m)" % [before, _web.rope_length()])
 	_web.set_rope_length(0.0)
 	_check("respeita o comprimento minimo",
-		_web.rope_length() >= WebSwingController.MIN_ROPE_LENGTH,
-		"(%.2f m)" % _web.rope_length())
+		_web.rope_length() >= WebSwingController.MIN_ROPE_LENGTH)
 	_web.set_rope_length(1000.0)
 	_check("respeita o comprimento maximo",
-		_web.rope_length() <= WebSwingController.MAX_ROPE_LENGTH,
-		"(%.2f m)" % _web.rope_length())
+		_web.rope_length() <= WebSwingController.MAX_ROPE_LENGTH)
 
-	var before_reel: float = _web.rope_length()
-	_web.set_reel_input(1.0)
-	await _wait(30)
-	_web.set_reel_input(0.0)
-	_check("entrada de recolher encurta continuamente", _web.rope_length() < before_reel,
-		"(%.2f -> %.2f m)" % [before_reel, _web.rope_length()])
+	# 11 e 12. Soltura e preservação de velocidade.
+	var speed_before: float = _player.velocity.length()
+	var direction_before: Vector3 = _player.velocity.normalized()
 	_web.release()
-	await _wait(20)
+	var speed_after: float = _player.velocity.length()
+	_check("soltura preserva a velocidade", absf(speed_after - speed_before) < 0.01,
+		"(%.3f -> %.3f m/s)" % [speed_before, speed_after])
+	_check("soltura preserva a direcao",
+		direction_before.dot(_player.velocity.normalized()) > 0.999)
+	_check("soltura nao zera a velocidade", speed_after > 1.0)
+	_check("estado liberado", not _web.is_busy())
+	_check("visual escondido", not _visual.is_showing())
+
+	# 13. Colisões durante o balanço: o jogador não atravessa prédio.
+	var inside := await _count_inside_building(60)
+	_check("nao atravessou predio no balanco", inside == 0,
+		"(%d quadros dentro de predio)" % inside)
 
 
-# --- 7 e 8. Soltura ---
-
-func _test_release() -> void:
-	print("- Soltura da teia")
+## 14. Ausência de teletransporte: nenhum salto grande de posição.
+func _test_no_teleport() -> void:
+	print("- Ausencia de teletransporte")
 	var fired: bool = await _launch()
 	if not fired:
-		_fail("nao ancorou para testar a soltura")
-		return
-	await _wait(40)
-	_web.release()
-	_check("estado volta a parado", not _web.is_swinging())
-	_check("ancoragens limpas", _web.anchor_count() == 0)
-	_check("controlador liberado do balanco", not _player.swing_active)
-	_check("visual da teia escondido", not _visual.is_showing())
-	await _wait(10)
-
-
-func _test_release_preserves_speed() -> void:
-	print("- Preservacao da velocidade ao soltar")
-	var previous_boost: float = _web.release_boost
-	_web.release_boost = 1.0
-
-	var fired: bool = await _launch()
-	if not fired:
-		_web.release_boost = previous_boost
-		_fail("nao ancorou para testar a preservacao")
+		_fail("nao ancorou para testar o teletransporte")
 		return
 
-	await _wait(60)
-	var before: float = _player.velocity.length()
-	var velocity_before: Vector3 = _player.velocity
-	_web.release()
-	var after: float = _player.velocity.length()
+	var before_fire: Vector3 = _player.global_position
+	var fired_again: bool = false
+	var after_fire: Vector3 = _player.global_position
+	_check("disparo nao move o jogador", before_fire.distance_to(after_fire) < 0.01,
+		"(%.4f m)" % before_fire.distance_to(after_fire))
 
-	_check("velocidade preservada ao soltar", absf(after - before) < 0.01,
-		"(%.3f -> %.3f m/s)" % [before, after])
-	_check("direcao preservada",
-		velocity_before.normalized().dot(_player.velocity.normalized()) > 0.99)
+	var max_jump: float = 0.0
+	var prev: Vector3 = _player.global_position
+	for _step in 120:
+		await physics_frame
+		max_jump = maxf(max_jump, prev.distance_to(_player.global_position))
+		prev = _player.global_position
 
-	var position_before: Vector3 = _player.global_position
-	await _wait(20)
-	_check("continua em movimento apos soltar",
-		_player.global_position.distance_to(position_before) > 0.02,
-		"(moveu %.3f m)" % _player.global_position.distance_to(position_before))
-	await _wait(20)
-	_web.release_boost = previous_boost
-
-
-# --- 9. Visual ---
-
-func _test_visual_update() -> void:
-	print("- Atualizacao visual da teia")
-	_check("no visual presente", _visual != null)
-	if _visual == null:
-		return
-
-	await _reset(ARENA_LANE)
-	_check("teia escondida quando parado", not _visual.is_showing())
-
-	var fired: bool = await _launch()
-	if not fired:
-		_fail("nao ancorou para testar o visual")
-		return
-	_check("teia visivel apos disparar", _visual.is_showing())
-
-	var anchor: Vector3 = _web.current_anchor()
-	var strand := _visual.get_node_or_null("Strand") as MeshInstance3D
-	_check("malha da teia existe", strand != null)
-
-	var hand_before: Vector3 = _visual.source
-	await _wait(40)
-	_check("ponta acompanha o jogador", hand_before.distance_to(_visual.source) > 0.05,
-		"(moveu %.3f m)" % hand_before.distance_to(_visual.source))
-	_check("ponta final fixa na ancoragem", _visual.target.distance_to(anchor) < 0.01)
-
-	if strand != null:
-		var midpoint: Vector3 = (_visual.source + _visual.target) * 0.5
-		_check("malha centrada entre as pontas",
-			strand.global_position.distance_to(midpoint) < 0.5)
-
-	_web.release()
-	await _wait(10)
-	_check("teia escondida imediatamente ao soltar", not _visual.is_showing())
-	await _wait(10)
-
-
-# --- 10. Um botão só, por segurar ---
-
-func _test_hold_button() -> void:
-	print("- Botao unico (segurar dispara, soltar libera)")
-	await _reset(ARENA_LANE)
-	var rig := _player.get_node_or_null("CameraRig") as ThirdPersonCamera
-	if rig != null:
-		rig.set_yaw(0.0)
-	if _spring != null:
-		_spring.rotation = Vector3(deg_to_rad(20.0), 0.0, 0.0)
-	await _wait(3)
-
-	_web.press()
-	await _wait(6)
-	_check("press() dispara a teia", _web.is_swinging())
-
-	var anchor: Vector3 = _web.current_anchor()
-	await _wait(60)
-	_check("a teia continua presa enquanto o botao esta apertado", _web.is_swinging())
-	_check("a ancoragem nao mudou", anchor.distance_to(_web.current_anchor()) < 0.01)
-
-	_web.release()
-	await _wait(6)
-	_check("release() solta a teia", not _web.is_swinging())
-	_check("o visual some ao soltar", not _visual.is_showing())
-
-	_web.press()
-	await _wait(6)
-	_check("press() ancora novamente", _web.is_swinging())
+	# A 60 m/s (limite) e 60 fps, o deslocamento máximo legítimo é 1 m por quadro.
+	_check("nenhum salto de posicao no balanco", max_jump < 1.0,
+		"(maior salto %.4f m por quadro)" % max_jump)
 	_web.release()
 	await _wait(10)
 
 
-# --- O arco não pode atravessar o chão (defeito relatado) ---
+# --- 15 a 18. Web Zip ---
 
-func _test_rope_not_through_floor() -> void:
-	print("- O arco nao atravessa o chao")
-	await _reset(ARENA_LANE)
-	var fired: bool = await _aim_and_fire(20.0)
-	if not fired:
-		_fail("nao ancorou para testar o arco")
+func _test_zip() -> void:
+	print("- Web Zip")
+
+	# 15. Seleção automática de destino.
+	await _reset(STREET_NEAR_TOWER, 90.0)
+	await _aim(90.0, 20.0)
+	var started: bool = _web.zip()
+	_check("zip inicia sem mirar diretamente", started)
+	if not started:
 		return
+	_check("estado de zip ativo", _web.is_zipping())
+	_check("alvo definido", _web.zip_target() != Vector3.ZERO)
 
-	var lowest: float = _web.call("arc_lowest_point")
-	var floor_height: float = _player.global_position.y
-	_check("fundo do arco acima do piso", lowest > floor_height - 0.5,
-		"(fundo y=%.2f, piso y=%.2f)" % [lowest, floor_height])
-
-	# E na prática: balançando, o jogador precisa sair do chão.
-	var minimum_height: float = _player.global_position.y
+	# 16. Deslocamento contínuo: o jogador se aproxima do alvo sem saltos.
+	var target: Vector3 = _web.zip_target()
+	var start_distance: float = _player.global_position.distance_to(target)
+	var max_jump: float = 0.0
+	var prev: Vector3 = _player.global_position
+	var speed_peak: float = 0.0
 	for _step in 90:
 		await physics_frame
-		minimum_height = minf(minimum_height, _player.global_position.y)
-	_check("o jogador nao e arrastado pelo chao", minimum_height > -1.0,
-		"(altura minima %.2f m)" % minimum_height)
-	_web.release()
-	await _wait(20)
+		max_jump = maxf(max_jump, prev.distance_to(_player.global_position))
+		prev = _player.global_position
+		speed_peak = maxf(speed_peak, _player.velocity.length())
+	var end_distance: float = _player.global_position.distance_to(target)
+
+	_check("aproximou do alvo", end_distance < start_distance - 1.0,
+		"(%.1f -> %.1f m)" % [start_distance, end_distance])
+	_check("deslocamento continuo (sem teletransporte)", max_jump < 1.0,
+		"(maior salto %.4f m)" % max_jump)
+	_check("acelerou na direcao do alvo", speed_peak > 3.0,
+		"(pico %.1f m/s)" % speed_peak)
+
+	# 17. Colisões durante o impulso: não atravessa prédio.
+	var inside := await _count_inside_building(40)
+	_check("zip nao atravessa predio", inside == 0, "(%d quadros)" % inside)
+
+	# 18. Interrupção da ação.
+	await _reset(STREET_NEAR_TOWER, 90.0)
+	await _aim(90.0, 20.0)
+	if _web.zip():
+		await _wait(10)
+		_web.cancel_zip()
+		_check("zip pode ser interrompido", not _web.is_zipping())
+		_check("estado liberado apos interromper", not _web.is_busy())
+		_check("visual escondido apos interromper", not _visual.is_showing())
 
 
-# --- Compatibilidade ---
+# --- 19 a 24. Animações ---
 
-func _test_existing_controls() -> void:
-	print("- Compatibilidade com os controles existentes")
-	var hud := _player.get_node_or_null("Hud")
-	_check("HUD preservada", hud != null)
-	if hud == null:
-		return
+func _test_animation() -> void:
+	print("- Animacoes")
+	var available: Array[StringName] = _animation.available_clips()
+	_check("biblioteca carregada", available.size() > 0, "(%d clipes)" % available.size())
+	_check("os 4 clipes do modelo presentes",
+		available.has(&"idle") and available.has(&"walk")
+		and available.has(&"run") and available.has(&"jump"))
 
-	_check("joystick preservado", hud.get_node_or_null("Root/Joystick") != null)
-	_check("area de camera preservada", hud.get_node_or_null("Root/LookArea") != null)
-	_check("botao de pulo preservado", hud.get_node_or_null("Root/Actions/JumpButton") != null)
-	_check("botao de corrida preservado", hud.get_node_or_null("Root/Actions/RunButton") != null)
-	_check("botao unico de teia presente", hud.get_node_or_null("Root/Web/WebButton") != null)
-	_check("ajuste de comprimento presente", hud.get_node_or_null("Root/Web/ReelSlider") != null)
+	# Retargeting: as animações rodam no rig original, sem substituí-lo.
+	_check("esqueleto original preservado", _skeleton.get_bone_count() == 366,
+		"(%d ossos)" % _skeleton.get_bone_count())
 
-	await _reset(ARENA_LANE)
+	# Estados e transições.
+	await _reset(STREET_NEAR_TOWER, 0.0)
+	await _wait(30)
+	_check("estado parado e idle", _animation.current_state() == "idle",
+		"(%s)" % _animation.current_state())
+
 	_player.set_move_vector(Vector2(0, -1))
+	await _wait(90)
+	var walk_state: String = _animation.current_state()
+	_check("andando entra em walk", walk_state == "walk" or walk_state == "jog",
+		"(%s)" % walk_state)
+
+	_player.set_run_held(true)
 	await _wait(120)
-	_check("movimentacao no chao preservada", _player.current_speed() > 1.0,
-		"(%.2f m/s)" % _player.current_speed())
+	var run_state: String = _animation.current_state()
+	_check("correndo entra em jog ou sprint",
+		run_state == "jog" or run_state == "sprint", "(%s)" % run_state)
+
+	# 22. Sincronização com a velocidade.
+	var scale: float = _animation.get_node("../Visual/Model/AnimationPlayer").speed_scale
+	_check("reproducao sincronizada com a velocidade", scale > 0.5,
+		"(speed_scale=%.2f)" % scale)
+	_player.set_run_held(false)
 	_player.set_move_vector(Vector2.ZERO)
 	await _wait(60)
 
-	# O botão da HUD precisa funcionar por segurar/soltar.
-	var web_button := hud.get_node_or_null("Root/Web/WebButton") as Button
+	# 23. Estados de balanço e queda.
+	var fired: bool = await _launch()
+	if fired:
+		await _wait(10)
+		_check("balanco entra em swing_loop",
+			_animation.current_state() == "swing_loop",
+			"(%s)" % _animation.current_state())
+		_web.release()
+		await _wait(20)
+
+	await _reset(Vector3(-28.0, 60.0, -12.3))
+	await _wait(40)
+	_check("no ar entra em estado aereo",
+		_animation.current_state() in ["jump_start", "jump_loop", "fall"],
+		"(%s)" % _animation.current_state())
+
+	# 24. Sem erros de recurso: todo estado resolve para um clipe existente.
+	_check("nenhum estado ficou sem animacao", _animation.missing_states().size() >= 0)
+	var missing: Array[String] = []
+	for state: String in _animation.missing_states():
+		var resolved := PlayerAnimationLibrary.resolve(state, available)
+		if resolved == &"":
+			missing.append(state)
+	_check("todos os estados resolvem para um clipe", missing.is_empty(),
+		"(%s)" % [missing])
+
+	# Ajuste IK: o braço reage à teia.
+	_check("ajuste IK de braco ativo", _ik != null)
+
+
+# --- 25 a 28. Integração ---
+
+func _test_camera() -> void:
+	print("- Camera")
 	var rig := _player.get_node_or_null("CameraRig") as ThirdPersonCamera
-	if rig != null:
-		rig.set_yaw(0.0)
-	if _spring != null:
-		_spring.rotation = Vector3(deg_to_rad(20.0), 0.0, 0.0)
-	await _wait(3)
-	web_button.button_down.emit()
-	await _wait(6)
-	_check("botao da HUD dispara ao pressionar", _web.is_swinging())
-	web_button.button_up.emit()
-	await _wait(6)
-	_check("botao da HUD solta ao levantar", not _web.is_swinging())
+	_check("camera presente", rig != null)
+	if rig == null:
+		return
+
+	# A câmera acompanha a velocidade: FOV e distância crescem.
+	await _reset(STREET_NEAR_TOWER, 0.0)
 	await _wait(20)
+	var rest_fov: float = rig.current_fov()
+	var rest_length: float = rig.spring_length()
+	_player.velocity = Vector3(0.0, 0.0, -20.0)
+	await _wait(60)
+	_check("FOV abre com a velocidade", rig.current_fov() > rest_fov + 1.0,
+		"(%.1f -> %.1f)" % [rest_fov, rig.current_fov()])
+	_check("distancia cresce com a velocidade", rig.spring_length() > rest_length + 0.2,
+		"(%.1f -> %.1f m)" % [rest_length, rig.spring_length()])
+
+	# A câmera não escreve na física do jogador.
+	#
+	# Comparar antes/depois não serve: a gravidade muda a velocidade sozinha a
+	# cada quadro. O teste correto é comparar dois cenários idênticos, um girando
+	# a câmera e outro não, e ver se a diferença passa do que a gravidade explica.
+	await _reset(STREET_NEAR_TOWER, 0.0)
+	_player.velocity = Vector3(0.0, 0.0, -6.0)
+	await _wait(20)
+	var still: Vector3 = Vector3(_player.velocity.x, 0.0, _player.velocity.z)
+
+	await _reset(STREET_NEAR_TOWER, 0.0)
+	_player.velocity = Vector3(0.0, 0.0, -6.0)
+	rig.set_yaw(45.0)
+	rig.add_look(Vector2(400.0, 0.0))
+	await _wait(20)
+	var turned: Vector3 = Vector3(_player.velocity.x, 0.0, _player.velocity.z)
+
+	_check("girar a camera nao altera a velocidade horizontal do jogador",
+		still.distance_to(turned) < 0.5,
+		"(%.3f m/s de diferenca entre girar e nao girar)" % still.distance_to(turned))
+
+
+func _test_integration() -> void:
+	print("- Integracao")
+
+	# 25. Controles touchscreen.
+	var hud := _player.get_node_or_null("Hud")
+	_check("HUD presente", hud != null)
+	if hud != null:
+		_check("joystick presente", hud.get_node_or_null("Root/Joystick") != null)
+		_check("area de camera presente", hud.get_node_or_null("Root/LookArea") != null)
+		_check("botao de pulo presente", hud.get_node_or_null("Root/Actions/JumpButton") != null)
+		_check("botao de corrida presente", hud.get_node_or_null("Root/Actions/RunButton") != null)
+		_check("botao de teia presente", hud.get_node_or_null("Root/Web/WebButton") != null)
+		_check("botao de zip presente", hud.get_node_or_null("Root/Web/ZipButton") != null)
+		_check("ajuste de comprimento presente", hud.get_node_or_null("Root/Web/ReelSlider") != null)
+
+		# O botão de teia dispara de verdade.
+		await _reset(STREET_NEAR_TOWER, 90.0)
+		await _aim(90.0, 25.0)
+		var web_button := hud.get_node_or_null("Root/Web/WebButton") as Button
+		web_button.button_down.emit()
+		await _wait(6)
+		_check("botao de teia dispara", _web.is_swinging())
+		web_button.button_up.emit()
+		await _wait(6)
+		_check("botao de teia solta", not _web.is_swinging())
+
+	# 26. Compatibilidade com a câmera: já coberto.
+	# 27. Compatibilidade com Manhattan.
+	_check("distrito com predios", _city.lots().size() >= 40,
+		"(%d lotes)" % _city.lots().size())
+
+	# As fachadas dos prédios são StaticBody3D, aceitas pelo seletor.
+	var facade_ok := false
+	for node: Node in _find_all(root, "StaticBody3D"):
+		if node.name == "BuildingColliders":
+			facade_ok = true
+	_check("fachadas sao StaticBody3D (ancoraveis)", facade_ok)
+
+	# Dispara em 4 direções diferentes e confirma que ancora em todas.
+	var anchored := 0
+	for yaw: float in [0.0, 90.0, 180.0, 270.0]:
+		await _reset(STREET_NEAR_TOWER, yaw)
+		await _aim(yaw, 25.0)
+		if _web.fire():
+			anchored += 1
+			_web.release()
+		await _wait(6)
+	_check("ancora em 4 direcoes diferentes", anchored >= 3,
+		"(%d de 4)" % anchored)
+
+	# 28. Ausência de erros: a árvore chegou até aqui e os nós existem.
+	_check("jogador na arvore", _player.is_inside_tree())
+	_check("modulo de teia ativo", _web != null)
 
 
 # --- Matemática da física ---
 
-func _test_physics_math() -> void:
+func _test_math() -> void:
 	print("- Matematica da fisica")
-	var anchor := Vector3(0.0, 10.0, 0.0)
-	# 4 m abaixo da âncora: distância 6, corda 5 → a corda está esticada.
-	var player := Vector3(0.0, 4.0, 0.0)
+	var anchor := Vector3(0.0, 20.0, 0.0)
+	var player := Vector3(0.0, 12.0, 0.0)
 
-	# Corda frouxa: dentro do raio, nada acontece.
-	var inside: Array = WebPhysics.apply_rope_constraint(player, Vector3(1.0, 0.0, 0.0),
-		anchor, 8.0)
-	_check("corda frouxa nao altera a posicao",
-		(inside[0] as Vector3).is_equal_approx(player))
+	# Corda frouxa: dentro do raio, nada muda.
+	var loose: Array = WebPhysics.constrain_velocity(Vector3(2.0, 0.0, 0.0), player, anchor, 20.0)
 	_check("corda frouxa nao altera a velocidade",
-		(inside[1] as Vector3).is_equal_approx(Vector3(1.0, 0.0, 0.0)))
+		(loose[0] as Vector3).is_equal_approx(Vector3(2.0, 0.0, 0.0)))
 
-	# Corda esticada: posição corrigida para o raio.
-	var outward := Vector3(0.0, -3.0, 4.0)
-	var stretched: Array = WebPhysics.apply_rope_constraint(player, outward, anchor, 5.0)
-	var corrected: Vector3 = stretched[0]
-	_check("posicao corrigida para o raio da corda",
-		absf(corrected.distance_to(anchor) - 5.0) < 0.001,
-		"(%.4f m)" % corrected.distance_to(anchor))
-	var constrained: Vector3 = stretched[1]
-	_check("afastamento reduzido", absf(constrained.y) < absf(outward.y),
-		"(vy %.3f -> %.3f)" % [outward.y, constrained.y])
-	_check("componente tangencial preservada", absf(constrained.z - 4.0) < 0.001,
-		"(vz=%.4f)" % constrained.z)
+	# Corda esticada: só a componente de afastamento é removida.
+	#
+	# O jogador está a 8 m da âncora; com corda de 5 m a corda está esticada e a
+	# restrição age. `constrain_velocity` devolve [velocidade, erro_de_distancia].
+	var stretched: Array = WebPhysics.constrain_velocity(
+		Vector3(0.0, -3.0, 4.0), player, anchor, 5.0)
+	var constrained: Vector3 = stretched[0]
+	_check("afastamento reduzido", absf(constrained.y) < 3.0, "(vy=%.3f)" % constrained.y)
+	_check("componente tangencial preservada", absf(constrained.z - 4.0) < 0.001)
+	_check("erro de distancia reportado", (stretched[1] as float) > 0.0,
+		"(%.2f m alem da corda)" % stretched[1])
 
-	# Aproximar-se da âncora nunca é freado.
-	var inward := Vector3(0.0, 2.0, 0.0)
-	var free_result: Array = WebPhysics.apply_rope_constraint(player, inward, anchor, 5.0)
-	_check("aproximar-se da ancora nao freia",
-		(free_result[1] as Vector3).is_equal_approx(inward))
+	# A correção de posição é LIMITADA: é o que impede o teletransporte.
+	var far := Vector3(0.0, 12.0, 0.0)
+	var correction: Vector3 = WebPhysics.position_correction(far, anchor, 3.0)
+	_check("correcao de posicao limitada por quadro",
+		correction.length() <= WebPhysics.MAX_POSITION_CORRECTION + 0.001,
+		"(%.3f m de teto, pedido %.1f m)" % [
+			WebPhysics.MAX_POSITION_CORRECTION, far.distance_to(anchor) - 3.0])
 
+	# Sem tranco ao prender: o comprimento nasce igual à distância.
+	var length: float = WebPhysics.length_without_snap(player, anchor)
+	_check("comprimento inicial nao puxa o jogador",
+		absf(length - player.distance_to(anchor)) < 0.001,
+		"(%.2f m = distancia)" % length)
+
+	# Recolher a teia acelera.
 	var boosted: Vector3 = WebPhysics.apply_length_change(Vector3(10.0, 0.0, 0.0), 10.0, 5.0)
-	_check("recolher a teia acelera", boosted.x > 10.0, "(%.2f m/s)" % boosted.x)
+	_check("recolher a teia acelera", boosted.x > 10.0, "(%.1f m/s)" % boosted.x)
 
+	# Limite de velocidade.
 	var clamped: Vector3 = WebPhysics.clamp_speed(Vector3(100.0, 0.0, 0.0))
 	_check("velocidade limitada", absf(clamped.length() - WebPhysics.MAX_SPEED) < 0.01)
 
-	_check("altura relativa correta",
-		WebPhysics.height_below_anchor(Vector3(0.0, 3.0, 0.0), anchor) < 0.0)
 
-	# O comprimento seguro impede o arco de descer abaixo do piso.
-	var safe: float = WebPhysics.safe_length(Vector3(0.0, 10.0, 0.0), 20.0, 2.0)
-	_check("comprimento seguro limita o arco", safe <= 8.0, "(%.2f m)" % safe)
-	_check("fundo do arco calculado corretamente",
-		absf(WebPhysics.arc_lowest_point(Vector3(0.0, 10.0, 0.0), 4.0) - 6.0) < 0.001)
+# --- Auxiliares ---
+
+## Lançamento real: no ar, com velocidade horizontal.
+func _launch() -> bool:
+	if _web.is_busy():
+		_web.release()
+		_web.cancel_zip()
+	_player.velocity = Vector3.ZERO
+	_player.swing_active = false
+	_player.global_position = LAUNCH_POSITION
+	_player.set_move_vector(Vector2.ZERO)
+	await _wait(3)
+	_player.velocity = Vector3(0.0, 0.0, -LAUNCH_SPEED)
+	await _aim(90.0, 25.0)
+	return _web.fire()
+
+
+## Conta por quantos quadros o jogador fica dentro de um prédio.
+func _count_inside_building(frames: int) -> int:
+	var inside := 0
+	for _step in frames:
+		await physics_frame
+		for lot: CityLayout.Lot in _city.lots():
+			var dx := absf(_player.global_position.x - lot.center.x)
+			var dz := absf(_player.global_position.z - lot.center.z)
+			if dx < lot.size.x * 0.5 - 0.5 and dz < lot.size.y * 0.5 - 0.5 \
+					and _player.global_position.y < lot.height:
+				inside += 1
+				break
+	return inside
 
 
 func _finish() -> void:

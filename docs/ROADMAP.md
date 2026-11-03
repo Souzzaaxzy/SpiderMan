@@ -67,14 +67,32 @@ Legenda: ✅ concluído · ⏳ aguardando aprovação · ⬜ não iniciado
 - [ ] **Próximo:** LOD, occlusion culling e carregamento por região — necessários
       antes de aumentar o distrito.
 
-## MISSÃO 005 — Sistemas de mundo ⏳
+## MISSÃO 005 — Reformulação da movimentação ✅
+
+- [x] Diagnóstico medido: teletransporte de **3,363 m por quadro** identificado.
+- [x] Fim do teletransporte: a corda corrige velocidade, não posição; a correção
+      de posição é limitada a 0,35 m por quadro e passa pelo `move_and_collide`.
+- [x] Seleção automática de alvos: 15 raios, pontuados por continuidade,
+      comprimento, altura, ganho e câmera (peso leve).
+- [x] Balanço: corda que só puxa, sem tranco ao prender, arco acima do piso.
+- [x] Web Zip: impulso contínuo, sem teletransporte, interrompível.
+- [x] Câmera: FOV e distância dinâmicos, inclinação lateral, sem tocar na física.
+- [x] Máquina de 22 estados de animação, com alternativa declarada.
+- [x] Ajustes procedurais de braço, tronco e pernas (IK de rotação).
+- [x] 82 verificações de movimentação; APK e CI verdes.
+- [ ] **Pendente:** 20 dos 22 estados de animação rodam em clipe alternativo.
+      Os arquivos do Mixamo precisam ser fornecidos — ver `docs/ANIMATIONS.md`.
+- [ ] **Pendente:** Wall Run, Wall Climb e Wall Jump (mecânica, não só estado).
+- [ ] **Pendente:** Point Launch (arquitetura preparada).
+
+## MISSÃO 006 — Sistemas de mundo ⏳
 
 - [ ] Ciclo dia/noite.
 - [ ] Colisão e navegação em superfície.
 - [ ] Pontos de interesse e objetivos simples.
 - [ ] HUD mínimo (objetivo atual, minimapa).
 
-## MISSÃO 006 — Conteúdo e polimento ⏳
+## MISSÃO 007 — Conteúdo e polimento ⏳
 
 - [ ] Missões curtas e missões secundárias.
 - [ ] Efeitos visuais e sonoros.
