@@ -53,6 +53,9 @@ jobs:
       - name: Rodar teste funcional do personagem
         run: godot --headless --path . --script res://tools/tests/player_smoke_test.gd
 
+      - name: Rodar teste do sistema de teias
+        run: godot --headless --path . --script res://tools/tests/web_swing_test.gd
+
       - name: Instalar SDK Android
         uses: android-actions/setup-android@v3
         with:
