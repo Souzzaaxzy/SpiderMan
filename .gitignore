@@ -23,5 +23,9 @@ Thumbs.db
 assets/models/player/original/*
 !assets/models/player/original/README.md
 
+# Texturas extraídas automaticamente pelo importador do .glb (regeneradas no import)
+assets/models/player/spiderman_newlife_*.png
+assets/models/player/spiderman_newlife_*.png.import
+
 # Memória do agente OpenHands (local, não faz parte do jogo)
 .openhands/
