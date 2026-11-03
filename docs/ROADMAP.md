@@ -23,13 +23,19 @@ Legenda: ✅ concluído · ⏳ aguardando aprovação · ⬜ não iniciado
 
 ---
 
-## MISSÃO 002 — Núcleo de personagem ⏳
+## MISSÃO 002 — Personagem 3D e movimentação ✅ (com pendência de asset)
 
-- [ ] Controlador do herói com `CharacterBody3D` e câmera em terceira pessoa.
-- [ ] Movimentação básica (andar, correr, virar) adaptada a touchscreen.
-- [ ] Sistema de balanço por teia (swing) com raycast e ponto de ancoragem.
-- [ ] Estados do personagem (parado, andando, caindo, balançando).
-- [ ] Controles touchscreen: joystick virtual + botões de ação.
+- [x] Verificação de disponibilidade e licença do modelo (ver `ASSET_LICENSE.md`).
+- [x] Otimizador de texturas para Android (`tools/optimize_textures.py`).
+- [x] Personagem jogável com `CharacterBody3D`: caminhada, corrida, pulo,
+      gravidade, colisões e rotação suave.
+- [x] Animação baseada na velocidade (modo modelo e modo procedural).
+- [x] Câmera em terceira pessoa com `SpringArm3D` e controle por toque.
+- [x] Controles touchscreen: joystick, área de câmera, botões de pulo e corrida.
+- [x] Cenário de teste: chão, prédios, plataformas, obstáculos, iluminação.
+- [x] Teste funcional automatizado (34 verificações) e APK de debug.
+- [ ] **Pendente:** importar o modelo do personagem — depende de liberação de
+      licença e do fornecimento dos arquivos pelo responsável.
 
 ## MISSÃO 003 — Blocos da cidade ⏳
 

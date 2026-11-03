@@ -5,11 +5,13 @@ original**, ambientado em uma representação de Nova York. Construído com
 **Godot 4.x** e **GDScript**, mirando o renderizador **Mobile** para rodar bem
 em dispositivos Android modestos.
 
-> **Estado atual — MISSÃO 001 (preparação técnica).**
-> Este repositório contém apenas a infraestrutura: projeto Godot configurado,
-> cena de boot executável, arquitetura modular, exportação Android funcionando e
-> automação de CI. **Nenhum sistema de gameplay foi implementado** — isso
-> aguarda aprovação explícita.
+> **Estado atual — MISSÃO 002 (personagem e movimentação).**
+> O projeto tem um personagem 3D jogável em terceira pessoa, com controles
+> touchscreen, câmera, pulo, gravidade e um cenário de teste. **O modelo do
+> personagem ainda não foi importado** — o download exige conta no CGTrader e o
+> asset tem impedimento de licença; veja
+> [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md). Em execução, o personagem usa
+> um bloco de teste neutro criado no projeto.
 
 ---
 
@@ -55,20 +57,43 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 ├── export_presets.cfg         # Preset "Android" pronto para exportar APK
 ├── icon.svg                   # Emblema original do projeto
 ├── scenes/
-│   └── boot/
-│       └── main.tscn          # Cena inicial: Camera3D + luz + bootstrap
+│   ├── boot/
+│   │   └── main.tscn          # Cena inicial: câmera + luz + bootstrap
+│   ├── player/
+│   │   └── player.tscn        # Personagem jogável (corpo, câmera, HUD de toque)
+│   └── arena/
+│       └── test_arena.tscn    # Cenário de testes (chão, prédios, plataformas)
 ├── src/
-│   ├── core/                  # Núcleo: bootstrap e arquitetura de módulos
+│   ├── core/                  # Núcleo: bootstrap, arquitetura de módulos, cenário
 │   │   ├── game_bootstrap.gd
 │   │   ├── module_registry.gd
-│   │   └── game_module.gd
-│   └── modules/               # Um diretório por sistema de gameplay (vazio por ora)
-├── assets/                    # Arte, áudio e fontes do jogo
+│   │   ├── game_module.gd
+│   │   └── arena_builder.gd
+│   ├── player/                # Controlador e animação do personagem
+│   │   ├── player_controller.gd
+│   │   ├── player_animation.gd
+│   │   └── player_input.gd
+│   ├── camera/
+│   │   └── third_person_camera.gd
+│   ├── ui/                    # Controles touchscreen
+│   │   ├── player_hud.gd
+│   │   ├── touch_joystick.gd
+│   │   └── touch_look_area.gd
+│   └── modules/               # Um diretório por sistema de gameplay
+│       └── gameplay/          # Instancia cenário + personagem no boot
+├── assets/
+│   └── models/player/
+│       ├── original/          # Modelo bruto (não versionado)
+│       └── optimized/         # Saída do otimizador de texturas
+├── tools/
+│   ├── optimize_textures.py   # Reduz texturas para Android sem tocar no original
+│   └── tests/                 # Teste funcional rodado pelo próprio motor
 ├── docs/
-│   ├── ROADMAP.md             # Etapas de desenvolvimento
-│   └── ARCHITECTURE.md        # Decisões de arquitetura
+│   ├── ROADMAP.md
+│   ├── ARCHITECTURE.md
+│   └── ASSET_LICENSE.md       # Licenças e limitações dos assets externos
 ├── build/android/             # Saída dos APKs (não versionada)
-└── .github/workflows/         # CI: validação headless + exportação de APK
+└── .github/workflows/         # CI: headless + teste funcional + exportação de APK
 ```
 
 ---
@@ -91,8 +116,39 @@ Saída esperada:
 
 ```
 Godot Engine v4.7.2.stable.official...
-[bootstrap] Spider-Man: New Life v0.1.0 pronta. Modulos ativos: 0.
+[gameplay] Personagem e cenario de teste carregados.
+[bootstrap] Spider-Man: New Life v0.1.0 pronta. Modulos ativos: 1.
 ```
+
+Rodar o teste funcional do personagem (física, movimentação, pulo, colisões e
+controles de toque, no próprio motor):
+
+```bash
+godot --headless --path . --script res://tools/tests/player_smoke_test.gd
+```
+
+O teste imprime cada verificação e termina com código de saída 1 se alguma
+falhar.
+
+## Controles
+
+| Ação | Touchscreen | Teclado (testes em desktop) |
+| --- | --- | --- |
+| Mover | joystick virtual (canto inferior esquerdo) | `W A S D` / setas |
+| Girar a câmera | arrastar na metade direita da tela | botão direito do mouse |
+| Pular | botão **Pular** | `Espaço` |
+| Correr | botão **Correr** | `Shift` |
+
+## Otimização de texturas
+
+```bash
+python3 tools/optimize_textures.py plan  assets/models/player/original assets/models/player/optimized
+python3 tools/optimize_textures.py apply assets/models/player/original assets/models/player/optimized
+```
+
+`plan` só relata; `apply` grava em `optimized/`. Os arquivos de `original/` nunca
+são alterados. Texturas EXR são sinalizadas para conversão manual (o motor não
+processa EXR 8K em tempo de execução no Android).
 
 ---
 
@@ -106,13 +162,13 @@ módulo autocontido:
 
    ```gdscript
    static func register_builtin_modules() -> void:
-       register_module("player", "res://src/modules/player/player_module.tscn")
+       register_module("gameplay", "res://src/modules/gameplay/gameplay_module.tscn")
    ```
 
 3. O `game_bootstrap.gd` inicializa todos os módulos registrados no boot.
 
-Adicionar um sistema novo não exige alterar os módulos existentes. A lista de
-módulos está intencionalmente vazia na MISSÃO 001.
+O módulo `gameplay` (MISSÃO 002) instancia o cenário de teste e o personagem.
+Adicionar um sistema novo não exige alterar os módulos existentes.
 
 Detalhes das decisões estão em [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -143,7 +199,7 @@ godot --headless --path . --export-debug "Android" build/android/SpiderManNewLif
 
 | Workflow | Gatilho | O que faz |
 | --- | --- | --- |
-| `ci.yml` | push / pull request | Valida o projeto Godot em headless e faz a exportação de um APK de debug como artefato. |
+| `ci.yml` | push / pull request | Importa o projeto, valida execução headless, roda o teste funcional do personagem e exporta um APK de debug como artefato. |
 
 Os workflows baixam o Godot 4.7.2 e os export templates automaticamente, então
 não exigem nenhum binário versionado no repositório.
@@ -157,7 +213,8 @@ não exigem nenhum binário versionado no repositório.
 - **GDScript:** estilos seguem o guia oficial da Godot (`snake_case` para
   variáveis e funções, `PascalCase` para classes).
 - **Um sistema por pasta:** evite arquivos monolíticos.
-- **Direitos autorais:** não incluir modelos, personagens ou marcas de terceiros.
+- **Assets de terceiros:** registrar licença e limitações em
+  [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md) antes de usar.
 
 ---
 
@@ -165,3 +222,4 @@ não exigem nenhum binário versionado no repositório.
 
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — etapas de desenvolvimento.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — decisões técnicas.
+- [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md) — licenças e limitações de uso.
