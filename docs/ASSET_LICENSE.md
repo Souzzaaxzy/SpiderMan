@@ -17,18 +17,25 @@ externos. Este documento não é parecer jurídico.
 | Preço | Gratuito |
 | Licença declarada | **Royalty Free License (no AI)** |
 | Espelho do mesmo autor | Sketchfab, *Black Suited Spider-Man (2007; Spider-Man 3)*, marcado **CC Attribution** |
+| Arquivos recebidos | Pasta no Google Drive fornecida pelo responsável do projeto |
 
-### Características técnicas (verificadas nas páginas públicas)
+### Características técnicas (verificadas por inspeção dos arquivos)
 
 | Item | Valor |
 | --- | --- |
-| Formatos | 2 × BLEND (4.2 e 5.0), 2 × FBX (um **rigged**, um sem rig), PNG 4K, EXR 8K |
-| Tamanho | BLEND 592 MB · FBX 25,7 MB · PNG 126 MB · EXR 267 MB |
-| Rig | Esqueleto baseado em **Mixamo**, com pesos ajustados e ossos de torção extras |
-| Animações | **Nenhuma** (0 animações) |
-| Malha | ~407.182 faces / ~209.205 vértices |
-| Texturas | PBR: Base Color, Roughness, Metalness, Normal |
-| Verificação | "Verified by CGTrader" no FBX (sem N-gons, geometria manifold, UV sem sobreposição) |
+| Malha | 407.182 triângulos / 342.745 vértices, 4 malhas (Body, Frames, Logos, Webs) |
+| Materiais | 8 (BlackSuit, Soles, Lens, Frames, Glass, Logos, Web, WebBlack) |
+| Texturas | 30 PNG, todas 4K (4096×4096) |
+| Animações | **0** |
+| Altura | 2,084 m, com os pés na origem |
+| `blacksuit+no rig.fbx` | 3 malhas, **sem esqueleto** |
+| `blacksuit+mixamo rig.fbx` | 1 malha, **sem esqueleto** (o nome não corresponde ao conteúdo) |
+| `raimisuitblender5.0.blend` | **Contém o rig**: armature "rig" com **366 ossos**, 86 grupos de vértices com peso, texturas embutidas em 4K |
+
+> **Achado importante:** apesar do nome, **nenhum dos dois FBX contém esqueleto** —
+> verificado pela ausência de nós `Deformer`/`Skin`/`Cluster` no binário FBX. O rig
+> existe apenas na cena do Blender, que é do tipo *Rigify* (ossos de controle
+> `c_*` dirigindo ossos de deformação) e **não traz clipes de animação**.
 
 ### ⚠️ Limitações de uso — leia antes de usar
 
@@ -60,18 +67,19 @@ Consequências práticas:
 | --- | --- |
 | MISSÃO 001: "não utilizar modelos ou personagens protegidos de terceiros" | **Conflita** — o modelo é de um personagem protegido. |
 | MISSÃO 001: "super-herói aracnídeo original" | **Conflita** — o objetivo do projeto é um herói original. |
-| MISSÃO 002: "não utilizar modelos substitutos" | Respeitada — nenhum substituto foi usado. |
 
-**Decisão pendente do responsável pelo projeto.** Enquanto isso, o personagem em
-execução usa um bloco de teste neutro, criado no projeto, que não deriva de
-nenhum asset de terceiros.
+**Decisão do responsável pelo projeto:** o modelo foi fornecido explicitamente
+para uso neste protótipo privado, ciente de que não pode ser publicado nem
+distribuído. Enquanto o projeto estiver em prototipagem fechada, o uso é
+adequado. **Antes de qualquer publicação, o personagem precisa ser substituído
+por um herói original.**
 
-### Situação do download
+### Arquivos e versionamento
 
-O download no CGTrader **exige conta autenticada**; não é acessível por link
-direto a partir deste ambiente. Por isso os arquivos originais **não estão no
-repositório**. Para prosseguir, é preciso que o responsável forneça o pacote
-baixado e coloque em `assets/models/player/original/`.
+Os arquivos brutos ficam em `assets/models/player/original/` e **não são
+versionados** (`.gitignore`). O que entra no Git é apenas o `.glb` convertido
+(`assets/models/player/spiderman_newlife.glb`), gerado por
+`tools/convert_model.py`. As texturas otimizadas (1024 px) ficam embutidas nele.
 
 ---
 
@@ -80,7 +88,6 @@ baixado e coloque em `assets/models/player/original/`.
 | Asset | Origem | Licença |
 | --- | --- | --- |
 | `icon.svg` | criado no projeto | do projeto |
-| Bloco de teste do personagem (`scenes/player/player.tscn`) | criado no projeto, primitivas da Godot | do projeto |
 | Cenário de teste (`scenes/arena/test_arena.tscn`) | criado no projeto, primitivas da Godot | do projeto |
 | Godot Engine 4.7.2 | godotengine.org | MIT |
 
@@ -95,3 +102,4 @@ baixado e coloque em `assets/models/player/original/`.
    distintas — a segunda sempre prevalece.
 4. Nunca versionar arquivos de terceiros no repositório; manter em
    `assets/models/player/original/` (ignorado pelo Git).
+

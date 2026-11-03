@@ -6,12 +6,14 @@ original**, ambientado em uma representação de Nova York. Construído com
 em dispositivos Android modestos.
 
 > **Estado atual — MISSÃO 002 (personagem e movimentação).**
-> O projeto tem um personagem 3D jogável em terceira pessoa, com controles
-> touchscreen, câmera, pulo, gravidade e um cenário de teste. **O modelo do
-> personagem ainda não foi importado** — o download exige conta no CGTrader e o
-> asset tem impedimento de licença; veja
-> [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md). Em execução, o personagem usa
-> um bloco de teste neutro criado no projeto.
+> O personagem 3D está **importado e animado por esqueleto** (366 ossos), com
+> movimentação em terceira pessoa, controles touchscreen, câmera, pulo e um
+> cenário de teste. O rig **não veio com clipes de animação**, então a passada é
+> gerada em código a partir da velocidade.
+>
+> ⚠️ O modelo é uma réplica de personagem protegido (Marvel/Sony), fornecido para
+> protótipo privado. **Não publicar nem distribuir.** Veja
+> [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md).
 
 ---
 
@@ -83,11 +85,13 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │       └── gameplay/          # Instancia cenário + personagem no boot
 ├── assets/
 │   └── models/player/
-│       ├── original/          # Modelo bruto (não versionado)
-│       └── optimized/         # Saída do otimizador de texturas
+│       ├── spiderman_newlife.glb   # Personagem convertido (rig + malhas)
+│       ├── original/               # Arquivos brutos recebidos (não versionados)
+│       └── optimized/textures/     # Texturas reduzidas para 1024 px
 ├── tools/
 │   ├── optimize_textures.py   # Reduz texturas para Android sem tocar no original
-│   └── tests/                 # Teste funcional rodado pelo próprio motor
+│   ├── convert_model.py       # Converte a cena do Blender em .glb para a Godot
+│   └── tests/                 # Teste funcional e inspeção, rodados pelo motor
 ├── docs/
 │   ├── ROADMAP.md
 │   ├── ARCHITECTURE.md
@@ -149,6 +153,20 @@ python3 tools/optimize_textures.py apply assets/models/player/original assets/mo
 `plan` só relata; `apply` grava em `optimized/`. Os arquivos de `original/` nunca
 são alterados. Texturas EXR são sinalizadas para conversão manual (o motor não
 processa EXR 8K em tempo de execução no Android).
+
+## Conversão do modelo
+
+O rig está na cena do Blender (os FBX fornecidos não têm esqueleto). A conversão
+para `.glb` é reproduzível:
+
+```bash
+python3 tools/convert_model.py <caminho>/raimisuitblender5.0.blend \
+    assets/models/player/optimized/textures \
+    assets/models/player/spiderman_newlife.glb
+```
+
+Requisitos: `pip install bpy` (o Blender como módulo Python). O script reponta as
+texturas embutidas para as versões otimizadas antes de exportar.
 
 ---
 

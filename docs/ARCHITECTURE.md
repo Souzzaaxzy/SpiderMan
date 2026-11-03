@@ -70,7 +70,7 @@ testar e desligar sistemas isoladamente.
 | Script | Papel |
 | --- | --- |
 | `src/player/player_controller.gd` | `CharacterBody3D`: velocidade, gravidade, pulo, rotação. |
-| `src/player/player_animation.gd` | Escolhe a animação pela velocidade; modo procedural quando não há clipes. |
+| `src/player/player_animation.gd` | Dirige os ossos do esqueleto pela velocidade; modo procedural se não houver esqueleto. |
 | `src/player/player_input.gd` | Registra as ações de teclado em tempo de execução. |
 | `src/camera/third_person_camera.gd` | Pivô da câmera: yaw/pitch, limites e arrasto. |
 | `src/ui/player_hud.gd` | Liga os controles de tela ao controlador e à câmera. |
@@ -99,11 +99,24 @@ de física, e a câmera não conhece o modelo.
 - **Otimização de texturas fora do motor.** `tools/optimize_textures.py` reduz
   para 1024 px e nunca escreve nos arquivos originais. EXR 8K é sinalizado para
   conversão manual, em vez de ser processado em tempo de execução no aparelho.
+- **Animação por ossos, não por clipes.** O rig é do tipo *Rigify*: os ossos com
+  peso na malha são filhos de ossos de controle `c_*`, e é girando o **pai** que
+  o filho se desloca. Além disso o rig **não traz nenhuma animação**. Por isso
+  `player_animation.gd` escreve a pose diretamente nos ossos a partir da
+  velocidade, convertendo a rotação de um eixo global para o espaço de cada osso
+  (`rest⁻¹ · R · rest`), o que torna o movimento previsível sem precisar
+  descobrir o eixo local de cada osso.
+- **Conversão fora do Git.** Os brutos (FBX sem rig, `.blend` de 321 MB) não são
+  versionados. `tools/convert_model.py` produz um `.glb` de 40 MB com as texturas
+  otimizadas embutidas.
 
 ### Pendência do modelo
 
-O modelo pedido é de um personagem protegido (ver `ASSET_LICENSE.md`) e o download
-exige conta no CGTrader. O personagem em execução usa um bloco neutro criado no
-projeto. `player_animation.gd` já detecta um `AnimationPlayer` com clipes: ao
-importar o modelo, basta adicionar o nó com as animações nomeadas para o modo de
-animação real entrar em uso, sem mudar o controlador.
+O modelo é uma réplica de personagem protegido (Marvel/Sony) e o rig **não trouxe
+clipes de animação**. O personagem está importado e a passada é gerada em código
+a partir da velocidade. Antes de publicar o jogo, o personagem precisa ser
+substituído por um herói original — ver `ASSET_LICENSE.md`.
+
+`player_animation.gd` detecta o `Skeleton3D` automaticamente e escolhe entre
+dirigir o esqueleto real ou animar um bloco procedural de teste. Trocar o modelo
+não exige mexer no controlador.

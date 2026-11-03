@@ -23,19 +23,21 @@ Legenda: ✅ concluído · ⏳ aguardando aprovação · ⬜ não iniciado
 
 ---
 
-## MISSÃO 002 — Personagem 3D e movimentação ✅ (com pendência de asset)
+## MISSÃO 002 — Personagem 3D e movimentação ✅
 
 - [x] Verificação de disponibilidade e licença do modelo (ver `ASSET_LICENSE.md`).
-- [x] Otimizador de texturas para Android (`tools/optimize_textures.py`).
+- [x] Importação do modelo: rig de 366 ossos, 407.182 triângulos, 8 materiais.
+- [x] Otimizador de texturas para Android: 30 texturas 4K → 1024 px (126 MB → 14 MB).
+- [x] Conversão reproduzível da cena do Blender em `.glb` (`tools/convert_model.py`).
 - [x] Personagem jogável com `CharacterBody3D`: caminhada, corrida, pulo,
       gravidade, colisões e rotação suave.
-- [x] Animação baseada na velocidade (modo modelo e modo procedural).
+- [x] Animação do esqueleto pela velocidade (o rig não trouxe clipes).
 - [x] Câmera em terceira pessoa com `SpringArm3D` e controle por toque.
 - [x] Controles touchscreen: joystick, área de câmera, botões de pulo e corrida.
 - [x] Cenário de teste: chão, prédios, plataformas, obstáculos, iluminação.
-- [x] Teste funcional automatizado (34 verificações) e APK de debug.
-- [ ] **Pendente:** importar o modelo do personagem — depende de liberação de
-      licença e do fornecimento dos arquivos pelo responsável.
+- [x] Teste funcional automatizado (42 verificações) e APK de debug.
+- [ ] **Substituir o personagem por um herói original** antes de qualquer
+      publicação (o modelo atual é protegido — ver `ASSET_LICENSE.md`).
 
 ## MISSÃO 003 — Blocos da cidade ⏳
 
