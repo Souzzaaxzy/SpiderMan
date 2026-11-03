@@ -1,64 +1,67 @@
 class_name PlayerAnimation
 extends Node
-## Animação do personagem, baseada na velocidade do controlador.
+## Animação do personagem, dirigida pela velocidade do controlador.
 ##
-## Dois modos, escolhidos automaticamente:
-## 1. **Esqueleto** — quando existe um Skeleton3D no nó Visual. Dirige os ossos
-##    de deformação do modelo (o rig do arquivo não traz clipes de animação).
-## 2. **Procedural** — sem esqueleto, balança os membros de um bloco de teste.
+## Os clipes (`idle`, `walk`, `run`, `jump`) vêm assados no próprio `.glb`: o rig
+## é do tipo Rigify em modo IK e depende de 279 constraints que não existem em
+## glTF, então a pose foi calculada e assada no Blender por
+## `tools/build_animations.py`. Aqui só escolhemos o clipe e ajustamos a
+## velocidade de reprodução.
 ##
-## Os nomes de ossos abaixo foram confirmados no rig importado: são ossos cujo
-## pai é um osso de controle, e que portanto deformam a malha.
+## Se o modelo não tiver os clipes (ex.: um bloco de teste sem esqueleto), cai no
+## modo procedural.
 
 @export_group("Referências")
 @export var visual_path: NodePath = ^"../Visual"
 @export var controller_path: NodePath = ^".."
+@export var animation_player_path: NodePath = ^"../AnimationPlayer"
+
+@export_group("Nomes dos clipes")
+@export var idle_clip: StringName = &"idle"
+@export var walk_clip: StringName = &"walk"
+@export var run_clip: StringName = &"run"
+@export var jump_clip: StringName = &"jump"
 
 @export_group("Velocidades de referência")
-## Velocidade em que a passada atinge a amplitude máxima.
-@export var run_blend_start: float = 4.5
-## Frequência da passada andando e correndo (ciclos por segundo).
-@export var walk_stride_rate: float = 1.6
-@export var run_stride_rate: float = 2.6
+## Velocidade em que o clipe de caminhada atinge a reprodução normal.
+@export var walk_speed_reference: float = 3.2
+## Velocidade em que o clipe de corrida atinge a reprodução normal.
+@export var run_speed_reference: float = 7.0
+## Acima desta velocidade usamos o clipe de corrida.
+@export var run_threshold: float = 4.5
 
-@export_group("Amplitudes (graus)")
-@export var leg_swing_walk: float = 22.0
-@export var leg_swing_run: float = 38.0
-@export var knee_bend: float = 26.0
-@export var arm_swing_walk: float = 18.0
-@export var arm_swing_run: float = 32.0
-## Inclinação do tronco para frente ao correr.
-@export var lean_run: float = 9.0
-## Agachamento ao pular (dobra dos joelhos no ar).
-@export var jump_crouch: float = 30.0
-
-@export_group("Ossos do rig")
-@export var thigh_bones: Array[String] = ["c_thigh_fk.l", "c_thigh_fk.r"]
-@export var knee_bones: Array[String] = ["c_leg_fk.l", "c_leg_fk.r"]
-@export var arm_bones: Array[String] = ["c_shoulder.l", "c_shoulder.r"]
-@export var spine_bone: String = "c_spine_02.x"
+@export_group("Modo procedural (sem clipes)")
+@export var swing_degrees: float = 30.0
 
 var _controller: Node
 var _visual: Node3D
-var _skeleton: Skeleton3D
+var _player: AnimationPlayer
 var _limbs: Array[Node3D] = []
-var _thigh_indices: Array[int] = []
-var _knee_indices: Array[int] = []
-var _arm_indices: Array[int] = []
-var _spine_index: int = -1
 var _phase: float = 0.0
-var _using_skeleton: bool = false
+var _current: StringName = &""
+var _using_clips: bool = false
 
 
 func _ready() -> void:
 	_controller = get_node_or_null(controller_path)
 	_visual = get_node_or_null(visual_path)
-	_skeleton = _find_skeleton(_visual)
-	_using_skeleton = _skeleton != null
-	if _using_skeleton:
-		_cache_bones()
+	_player = get_node_or_null(animation_player_path)
+	_using_clips = _player != null and _player.has_animation(idle_clip)
+	if _using_clips:
+		_configure_loops()
+		_play(idle_clip, 1.0)
 	else:
 		_collect_limbs()
+
+
+## O glTF não carrega informação de loop: o importador da Godot deixa todos os
+## clipes em "tocar uma vez". Os ciclos de locomoção precisam repetir; o pulo não.
+func _configure_loops() -> void:
+	for clip: StringName in [idle_clip, walk_clip, run_clip]:
+		if _player.has_animation(clip):
+			_player.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
+	if _player.has_animation(jump_clip):
+		_player.get_animation(jump_clip).loop_mode = Animation.LOOP_NONE
 
 
 func _process(delta: float) -> void:
@@ -66,86 +69,37 @@ func _process(delta: float) -> void:
 		return
 	var speed: float = _controller.current_speed()
 	var grounded: bool = _controller.is_grounded()
-	if _using_skeleton:
-		_drive_skeleton(speed, grounded, delta)
+	if _using_clips:
+		_drive_clips(speed, grounded)
 	else:
 		_drive_procedural(speed, grounded, delta)
 
 
-func _find_skeleton(node: Node) -> Skeleton3D:
-	if node == null:
-		return null
-	if node is Skeleton3D:
-		return node
-	for child in node.get_children():
-		var found := _find_skeleton(child)
-		if found != null:
-			return found
-	return null
-
-
-func _cache_bones() -> void:
-	_thigh_indices = _resolve(thigh_bones)
-	_knee_indices = _resolve(knee_bones)
-	_arm_indices = _resolve(arm_bones)
-	_spine_index = _skeleton.find_bone(spine_bone)
-
-
-func _resolve(names: Array[String]) -> Array[int]:
-	var indices: Array[int] = []
-	for bone_name in names:
-		indices.append(_skeleton.find_bone(bone_name))
-	return indices
-
-
-## Dirige os ossos do rig. A fase avança com a velocidade, então a passada
-## acelera junto com a corrida em vez de ficar em frequência fixa.
-func _drive_skeleton(speed: float, grounded: bool, delta: float) -> void:
-	var blend := clampf(speed / maxf(run_blend_start, 0.001), 0.0, 1.0)
-	var moving := speed > 0.15
-	if moving:
-		_phase += delta * lerpf(walk_stride_rate, run_stride_rate, blend) * TAU
-
-	var leg_amplitude := deg_to_rad(lerpf(leg_swing_walk, leg_swing_run, blend)) if moving else 0.0
-	var arm_amplitude := deg_to_rad(lerpf(arm_swing_walk, arm_swing_run, blend)) if moving else 0.0
-
-	for index in _thigh_indices.size():
-		var side := 1.0 if index == 0 else -1.0
-		var angle := sin(_phase) * leg_amplitude * side
-		if not grounded:
-			angle = deg_to_rad(jump_crouch) * 0.5 * side
-		_rotate(_thigh_indices[index], Vector3.RIGHT, angle)
-
-	for index in _knee_indices.size():
-		var side := 1.0 if index == 0 else -1.0
-		# O joelho dobra só para trás, então a amplitude é sempre positiva.
-		var bend := deg_to_rad(knee_bend) * (0.5 + 0.5 * sin(_phase + PI)) if moving else 0.0
-		if not grounded:
-			bend = deg_to_rad(jump_crouch)
-		_rotate(_knee_indices[index], Vector3.RIGHT, -absf(bend) * side)
-
-	for index in _arm_indices.size():
-		var side := 1.0 if index == 0 else -1.0
-		# Braços em oposição às pernas do mesmo lado.
-		_rotate(_arm_indices[index], Vector3.RIGHT, -sin(_phase) * arm_amplitude * side)
-
-	if _spine_index >= 0:
-		_rotate(_spine_index, Vector3.RIGHT, deg_to_rad(lean_run) * blend)
-
-
-## Aplica uma rotação em torno de um eixo global, convertida para o espaço do osso.
-func _rotate(bone_index: int, world_axis: Vector3, angle: float) -> void:
-	if bone_index < 0:
+## Escolhe o clipe pela velocidade e sincroniza a reprodução com o deslocamento,
+## para o pé não "patinar" no chão.
+func _drive_clips(speed: float, grounded: bool) -> void:
+	if not grounded:
+		_play(jump_clip, 1.0)
 		return
-	if is_zero_approx(angle):
-		_skeleton.set_bone_pose_rotation(bone_index, Quaternion())
+
+	if speed < 0.2:
+		_play(idle_clip, 1.0)
+	elif speed < run_threshold:
+		_play(walk_clip, clampf(speed / walk_speed_reference, 0.5, 1.6))
+	else:
+		_play(run_clip, clampf(speed / run_speed_reference, 0.7, 1.4))
+
+
+func _play(clip: StringName, speed_scale: float) -> void:
+	if _player == null or not _player.has_animation(clip):
 		return
-	var rest := _skeleton.get_bone_rest(bone_index).basis
-	var local := rest.inverse() * Basis(Quaternion(world_axis, angle)) * rest
-	_skeleton.set_bone_pose_rotation(bone_index, local.get_rotation_quaternion())
+	if clip != _current:
+		_current = clip
+		_player.play(clip)
+	_player.speed_scale = speed_scale
 
 
-## Modo sem esqueleto: balança os membros do bloco de teste.
+## Modo sem clipes: balança os membros de um bloco de teste.
 func _collect_limbs() -> void:
 	if _visual == null:
 		return
@@ -159,9 +113,9 @@ func _collect_limbs() -> void:
 func _drive_procedural(speed: float, grounded: bool, delta: float) -> void:
 	if _limbs.is_empty():
 		return
-	var amplitude := clampf(speed / maxf(run_blend_start, 0.001), 0.0, 1.0)
+	var amplitude := clampf(speed / maxf(run_speed_reference, 0.001), 0.0, 1.0)
 	_phase += delta * (2.0 + speed * 1.6)
-	var swing := sin(_phase) * deg_to_rad(leg_swing_run) * amplitude
+	var swing := sin(_phase) * deg_to_rad(swing_degrees) * amplitude
 	for index: int in _limbs.size():
 		var limb := _limbs[index]
 		var is_arm := index < 2

@@ -305,31 +305,77 @@ func _test_model(player: Node3D) -> void:
 			triangles += (index_len if index_len > 0 else mesh.surface_get_array_len(surface)) / 3
 	_check("malha tem geometria", triangles > 1000, "(%d triangulos)" % triangles)
 
-	# O driver de animação deve mover os ossos quando o personagem anda.
-	var thigh := skeleton.find_bone("c_thigh_fk.l")
-	var knee := skeleton.find_bone("c_leg_fk.l")
-	_check("ossos animados existem", thigh >= 0 and knee >= 0)
+	# O modelo precisa encarar -Z (frente da Godot), senão anda de costas.
+	# As lentes da máscara ficam na frente do rosto, então devem estar em -Z.
+	var lens_z := _lens_forward_offset(player)
+	_check("modelo virado para a frente (-Z)", lens_z < 0.0, "(lente em z=%.3f)" % lens_z)
 
+	# Os clipes assados no .glb devem estar disponíveis e tocar conforme a ação.
+	var animator := visual.get_node_or_null("Model/AnimationPlayer") as AnimationPlayer
+	_check("AnimationPlayer importado", animator != null)
+	if animator == null:
+		return
+	var clips := animator.get_animation_list()
+	for expected: StringName in [&"idle", &"walk", &"run", &"jump"]:
+		_check("clipe '%s' presente" % expected, clips.has(expected))
+
+	# Parado: idle.
+	await _reset(player, LANE_FREE)
+	await _wait_physics(20)
+	_check("parado toca 'idle'", animator.current_animation == &"idle", "(%s)" % animator.current_animation)
+
+	# Andando: walk.
+	player.set_move_vector(Vector2(0, -1))
+	await _wait_physics(90)
+	_check("andando toca 'walk'", animator.current_animation == &"walk", "(%s)" % animator.current_animation)
+
+	# Correndo: run.
+	player.set_run_held(true)
+	await _wait_physics(120)
+	_check("correndo toca 'run'", animator.current_animation == &"run", "(%s)" % animator.current_animation)
+	player.set_run_held(false)
+	player.set_move_vector(Vector2.ZERO)
+
+	# Os ossos devem mudar de posição ao longo do clipe de caminhada.
 	await _reset(player, LANE_FREE)
 	player.set_move_vector(Vector2(0, -1))
 	await _wait_physics(40)
+	var foot := skeleton.find_bone("foot.l")
+	_check("osso do pe existe", foot >= 0)
 	var samples: Array[float] = []
 	for _step in 12:
-		samples.append(skeleton.get_bone_pose_rotation(thigh).get_angle())
+		samples.append(skeleton.get_bone_global_pose(foot).origin.z)
 		await _wait_physics(6)
 	player.set_move_vector(Vector2.ZERO)
-
 	var smallest := samples[0]
 	var largest := samples[0]
 	for value in samples:
 		smallest = minf(smallest, value)
 		largest = maxf(largest, value)
-	_check("osso da perna se move ao andar", largest - smallest > 0.05, "(%.3f rad de amplitude)" % (largest - smallest))
+	_check("pe se move ao andar", largest - smallest > 0.05, "(%.3f m de amplitude)" % (largest - smallest))
 
-	await _reset(player, LANE_FREE)
-	await _wait_physics(60)
-	_check("osso volta ao repouso parado", skeleton.get_bone_pose_rotation(thigh).get_angle() < 0.05,
-		"(%.3f rad)" % skeleton.get_bone_pose_rotation(thigh).get_angle())
+
+## Posição Z das lentes da máscara no espaço do jogador. Fica negativo quando o
+## modelo encara -Z (frente na Godot).
+func _lens_forward_offset(player: Node3D) -> float:
+	var model := player.get_node_or_null("Visual/Model") as Node3D
+	if model == null:
+		return 0.0
+	for node in _all(model):
+		if not (node is MeshInstance3D):
+			continue
+		var mesh_instance := node as MeshInstance3D
+		var mesh: Mesh = mesh_instance.mesh
+		for surface in mesh.get_surface_count():
+			var material := mesh.surface_get_material(surface)
+			var material_name := material.resource_name if material != null else ""
+			if not material_name.begins_with("Lens"):
+				continue
+			# A malha do rig não tem transform próprio; a cadeia do modelo é que
+			# posiciona tudo. Usa o centro da caixa delimitadora como referência.
+			var local_center := mesh.get_aabb().get_center()
+			return (model.global_transform * local_center).z - player.global_position.z
+	return 0.0
 
 
 func _all(node: Node) -> Array[Node]:

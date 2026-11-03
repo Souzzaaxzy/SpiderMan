@@ -41,11 +41,11 @@ shape = SubResource("CapsuleShape3D_body")
 [node name="Visual" type="Node3D" parent="."]
 
 [node name="Model" parent="Visual" instance=ExtResource("7_model")]
-
-[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
 
 [node name="AnimationDriver" type="Node" parent="."]
 script = ExtResource("2_animation")
+animation_player_path = NodePath("../Visual/Model/AnimationPlayer")
 
 [node name="CameraRig" type="Node3D" parent="."]
 script = ExtResource("3_camera")
