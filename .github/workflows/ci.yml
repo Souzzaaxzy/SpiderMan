@@ -56,6 +56,9 @@ jobs:
       - name: Rodar teste do sistema de teias
         run: godot --headless --path . --script res://tools/tests/web_swing_test.gd
 
+      - name: Rodar teste do distrito urbano
+        run: godot --headless --path . --script res://tools/tests/city_test.gd
+
       - name: Instalar SDK Android
         uses: android-actions/setup-android@v3
         with:
