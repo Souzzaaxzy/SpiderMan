@@ -59,6 +59,12 @@ extends Node3D
 @export_group("Referências")
 @export var spring_arm_path: NodePath = ^"SpringArm3D"
 @export var camera_path: NodePath = ^"SpringArm3D/Camera3D"
+## Corpo do jogador, que o braço da câmera **precisa ignorar**.
+##
+## Sem isto o `SpringArm3D` colide com a própria cápsula do personagem e encurta
+## até a câmera entrar dentro dele — o defeito relatado ao disparar a teia, quando
+## o braço muda de comprimento e varre o corpo.
+@export var body_path: NodePath = ^".."
 
 var _yaw: float = 0.0
 var _pitch: float = 0.0
@@ -70,6 +76,7 @@ var _last_forward: Vector3 = Vector3.FORWARD
 
 @onready var _spring_arm: SpringArm3D = get_node_or_null(spring_arm_path)
 @onready var _camera: Camera3D = get_node_or_null(camera_path)
+@onready var _body: CollisionObject3D = get_node_or_null(body_path) as CollisionObject3D
 
 
 func _ready() -> void:
@@ -79,6 +86,9 @@ func _ready() -> void:
 	_target_fov = rest_fov
 	if _spring_arm != null:
 		_spring_arm.spring_length = rest_spring_length
+		# O braço não pode enxergar o corpo do próprio jogador.
+		if _body != null:
+			_spring_arm.add_excluded_object(_body.get_rid())
 	if _camera != null:
 		_camera.fov = rest_fov
 	_apply_rotation()
