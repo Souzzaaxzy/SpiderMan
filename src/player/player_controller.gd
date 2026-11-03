@@ -30,6 +30,15 @@ signal grounded_changed(grounded: bool)
 @export var visual_path: NodePath = ^"Visual"
 @export var camera_rig_path: NodePath = ^"CameraRig"
 
+@export_group("Balanço por teia")
+## Ligado pelo WebSwingController enquanto há teia ativa. Enquanto estiver
+## ligado, o controle de ar do jogador é suspenso para o pêndulo mandar, e o
+## personagem encara a direção em que está indo.
+@export var swing_active: bool = false
+## Passo de física do balanço, chamado depois da gravidade e antes do
+## move_and_slide. Devolve true se aplicou a restrição da corda.
+var web_stepper: Callable = Callable()
+
 var _move_vector: Vector2 = Vector2.ZERO
 var _jump_requested: bool = false
 var _run_held: bool = false
@@ -50,11 +59,39 @@ func _physics_process(delta: float) -> void:
 	var wants_run := _run_held or Input.is_action_pressed("run")
 	var target_speed := run_speed if wants_run else walk_speed
 
+	if swing_active:
+		# Durante o balanço o pêndulo manda: nada de controle de ar, para não
+		# frear o arco. O jogador ainda pode bombear, mas quem decide é a física.
+		_apply_gravity_and_jump(delta)
+		_apply_swing_step(delta)
+		move_and_slide()
+		_face_velocity_direction(delta)
+		_report_state()
+		return
+
 	_apply_horizontal_movement(direction, target_speed, delta)
 	_apply_gravity_and_jump(delta)
 	move_and_slide()
 	_face_movement_direction(direction, delta)
 	_report_state()
+
+
+## Pede ao sistema de teia para aplicar a restrição da corda neste passo.
+func _apply_swing_step(delta: float) -> void:
+	if web_stepper.is_valid():
+		web_stepper.call(delta)
+
+
+## No balanço o personagem encara para onde está indo, não para onde o joystick
+## aponta — é o que faz o arco parecer natural.
+func _face_velocity_direction(delta: float) -> void:
+	if _visual == null:
+		return
+	var flat := Vector3(velocity.x, 0.0, velocity.z)
+	if flat.length() < 0.5:
+		return
+	var target_yaw := atan2(-flat.x, -flat.z)
+	_visual.rotation.y = lerp_angle(_visual.rotation.y, target_yaw, clampf(turn_speed * delta, 0.0, 1.0))
 
 
 ## Entradas de movimento no formato (x = direita, y = para trás), igual ao

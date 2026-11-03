@@ -25,6 +25,13 @@ const BLOCKS: Array[Dictionary] = [
 	# Plataformas isoladas alcançáveis com pulo
 	{"id": "platform_a", "size": Vector3(4, 0.6, 4), "pos": Vector3(8.0, 1.3, 0.0)},
 	{"id": "platform_b", "size": Vector3(4, 0.6, 4), "pos": Vector3(12.0, 2.4, 3.0)},
+	# Viaduto: estrutura alta e estreita para exercitar o balanço por teia. Os
+	# prédios têm paredes, e o ponto mais baixo de um arco sempre cai embaixo da
+	# ancoragem — pendurar numa parede faria o jogador bater nela. O viaduto dá
+	# um teto livre para balançar por baixo.
+	{"id": "overpass_deck", "size": Vector3(18, 1, 1.2), "pos": Vector3(0.0, 16.0, -6.0)},
+	{"id": "overpass_pillar_l", "size": Vector3(1.2, 15.5, 1.2), "pos": Vector3(-9.0, 7.75, -6.0)},
+	{"id": "overpass_pillar_r", "size": Vector3(1.2, 15.5, 1.2), "pos": Vector3(9.0, 7.75, -6.0)},
 	# Obstáculos baixos para saltar ou contornar. Ficam fora dos dois eixos
 	# usados pelos testes (centro e x=-12) para não bloquear as rotas.
 	{"id": "wall_a", "size": Vector3(1, 1, 8), "pos": Vector3(5.0, 1.0, 0.0)},

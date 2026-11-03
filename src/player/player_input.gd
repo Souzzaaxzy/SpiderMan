@@ -13,6 +13,10 @@ const ACTION_KEYS := {
 	"move_right": [KEY_D, KEY_RIGHT],
 	"jump": [KEY_SPACE],
 	"run": [KEY_SHIFT],
+	"web_fire": [KEY_E],
+	"web_release": [KEY_Q],
+	"web_reel_in": [KEY_R],
+	"web_reel_out": [KEY_F],
 }
 
 

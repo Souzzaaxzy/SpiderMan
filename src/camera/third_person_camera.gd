@@ -22,9 +22,22 @@ extends Node3D
 @export_group("Referências")
 @export var spring_arm_path: NodePath = ^"SpringArm3D"
 
+@export_group("Câmera dinâmica (balanço)")
+## Comprimento do braço com o jogador devagar e na velocidade máxima.
+@export var rest_spring_length: float = 4.5
+@export var fast_spring_length: float = 6.5
+## Velocidade em que o braço chega ao comprimento máximo.
+@export var fast_length_speed: float = 22.0
+## Quão rápido o comprimento e o alinhamento se ajustam (0 = nunca).
+@export var length_lerp_speed: float = 2.5
+## Quanto do giro automático é aplicado por segundo durante o balanço. Mantido
+## baixo para não tirar o controle manual do jogador.
+@export var swing_align_speed: float = 1.6
+
 var _yaw: float = 0.0
 var _pitch: float = 0.0
 var _pending_look: Vector2 = Vector2.ZERO
+var _target_length: float = 4.5
 
 @onready var _spring_arm: SpringArm3D = get_node_or_null(spring_arm_path)
 
@@ -32,6 +45,9 @@ var _pending_look: Vector2 = Vector2.ZERO
 func _ready() -> void:
 	_yaw = deg_to_rad(start_yaw)
 	_pitch = deg_to_rad(start_pitch)
+	_target_length = rest_spring_length
+	if _spring_arm != null:
+		_spring_arm.spring_length = rest_spring_length
 	_apply_rotation()
 
 
@@ -41,11 +57,42 @@ func _unhandled_input(event: InputEvent) -> void:
 		add_look(event.relative * (touch_pixels_per_degree / mouse_pixels_per_degree))
 
 
-func _process(_delta: float) -> void:
-	if _pending_look == Vector2.ZERO:
+func _process(delta: float) -> void:
+	if _pending_look != Vector2.ZERO:
+		_apply_look(_pending_look)
+		_pending_look = Vector2.ZERO
+	_smooth_spring_length(delta)
+
+
+## Aproxima suavemente o comprimento do braço do alvo, para a mudança de
+## velocidade não dar um solavanco na câmera.
+func _smooth_spring_length(delta: float) -> void:
+	if _spring_arm == null:
 		return
-	_apply_look(_pending_look)
-	_pending_look = Vector2.ZERO
+	if is_equal_approx(_spring_arm.spring_length, _target_length):
+		return
+	_spring_arm.spring_length = lerpf(_spring_arm.spring_length, _target_length,
+		clampf(length_lerp_speed * delta, 0.0, 1.0))
+
+
+## Chamado pelo sistema de teia a cada quadro do balanço: afasta a câmera com a
+## velocidade e vai virando devagar para a direção do movimento.
+func align_to_swing(velocity: Vector3, delta: float) -> void:
+	var speed := velocity.length()
+	var ratio := clampf(speed / maxf(fast_length_speed, 0.001), 0.0, 1.0)
+	_target_length = lerpf(rest_spring_length, fast_spring_length, ratio)
+
+	var flat := Vector3(velocity.x, 0.0, velocity.z)
+	if flat.length() < 1.0:
+		return
+	var desired_yaw := atan2(-flat.x, -flat.z)
+	_yaw = lerp_angle(_yaw, desired_yaw, clampf(swing_align_speed * delta, 0.0, 1.0))
+	_apply_rotation()
+
+
+## Volta o braço ao comprimento de repouso (ao soltar a teia).
+func reset_spring_length() -> void:
+	_target_length = rest_spring_length
 
 
 ## Acumula um arrasto em pixels (toque ou mouse). Aplica no próximo frame.

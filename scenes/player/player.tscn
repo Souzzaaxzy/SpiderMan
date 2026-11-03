@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://bplayer0newlife1"]
+[gd_scene load_steps=14 format=3 uid="uid://bplayer0newlife1"]
 
 [ext_resource type="Script" path="res://src/player/player_controller.gd" id="1_controller"]
 [ext_resource type="Script" path="res://src/player/player_animation.gd" id="2_animation"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://src/ui/touch_joystick.gd" id="5_joystick"]
 [ext_resource type="Script" path="res://src/ui/touch_look_area.gd" id="6_look"]
 [ext_resource type="PackedScene" uid="uid://cpulppwrab7qi" path="res://assets/models/player/spiderman_newlife.glb" id="7_model"]
+[ext_resource type="PackedScene" uid="uid://cweb0newlife001" path="res://scenes/player/web_swing.tscn" id="8_web"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.38
@@ -56,6 +57,8 @@ spring_length = 4.5
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig/SpringArm3D"]
 current = true
+
+[node name="WebSwing" parent="." instance=ExtResource("8_web")]
 
 [node name="Hud" type="CanvasLayer" parent="."]
 script = ExtResource("4_hud")
@@ -141,3 +144,36 @@ custom_minimum_size = Vector2(144, 92)
 layout_mode = 2
 toggle_mode = true
 text = "Correr"
+
+[node name="Web" type="VBoxContainer" parent="Hud/Root"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -332.0
+offset_top = -220.0
+offset_right = -188.0
+offset_bottom = -28.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/separation = 16
+
+[node name="FireButton" type="Button" parent="Hud/Root/Web"]
+custom_minimum_size = Vector2(144, 92)
+layout_mode = 2
+text = "Teia"
+
+[node name="ReleaseButton" type="Button" parent="Hud/Root/Web"]
+custom_minimum_size = Vector2(144, 92)
+layout_mode = 2
+text = "Soltar"
+
+[node name="ReelSlider" type="HSlider" parent="Hud/Root/Web"]
+custom_minimum_size = Vector2(144, 48)
+layout_mode = 2
+min_value = -1.0
+max_value = 1.0
+step = 0.05
+value = 0.0

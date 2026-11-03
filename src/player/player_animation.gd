@@ -33,9 +33,25 @@ extends Node
 @export_group("Modo procedural (sem clipes)")
 @export var swing_degrees: float = 30.0
 
+@export_group("Balanço por teia")
+## Postura de balanço: tronco inclinado para frente e pernas recolhidas, aplicada
+## por cima do clipe. Valores baixos de propósito — é um ajuste discreto, não uma
+## animação falsa.
+@export var swing_lean_degrees: float = 14.0
+@export var swing_pose_blend_speed: float = 3.5
+## Ossos usados na postura. Se algum não existir, o ajuste é ignorado.
+@export var spine_bone: StringName = &"c_spine_02.x"
+@export var thigh_bones: Array[StringName] = [&"c_thigh_fk.l", &"c_thigh_fk.r"]
+@export var knee_bones: Array[StringName] = [&"c_leg_fk.l", &"c_leg_fk.r"]
+
 var _controller: Node
 var _visual: Node3D
 var _player: AnimationPlayer
+var _skeleton: Skeleton3D
+var _spine_index: int = -1
+var _thigh_indices: Array[int] = []
+var _knee_indices: Array[int] = []
+var _swing_blend: float = 0.0
 var _limbs: Array[Node3D] = []
 var _phase: float = 0.0
 var _current: StringName = &""
@@ -50,8 +66,38 @@ func _ready() -> void:
 	if _using_clips:
 		_configure_loops()
 		_play(idle_clip, 1.0)
+		_cache_swing_bones()
 	else:
 		_collect_limbs()
+
+
+## Guarda os índices dos ossos da postura de balanço, uma vez só.
+func _cache_swing_bones() -> void:
+	_skeleton = _find_skeleton(_visual)
+	if _skeleton == null:
+		return
+	_spine_index = _skeleton.find_bone(spine_bone)
+	_thigh_indices = _resolve_bones(thigh_bones)
+	_knee_indices = _resolve_bones(knee_bones)
+
+
+func _resolve_bones(names: Array[StringName]) -> Array[int]:
+	var indices: Array[int] = []
+	for bone_name in names:
+		indices.append(_skeleton.find_bone(bone_name))
+	return indices
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node == null:
+		return null
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
 
 
 ## O glTF não carrega informação de loop: o importador da Godot deixa todos os
@@ -71,8 +117,40 @@ func _process(delta: float) -> void:
 	var grounded: bool = _controller.is_grounded()
 	if _using_clips:
 		_drive_clips(speed, grounded)
+		_apply_swing_pose(delta)
 	else:
 		_drive_procedural(speed, grounded, delta)
+
+
+## Aplica uma postura discreta de balanço por cima do clipe: tronco inclinado e
+## pernas recolhidas, entrando e saindo suavemente. Não substitui o clipe, só
+## acompanha o movimento. O rig original não é alterado em disco.
+func _apply_swing_pose(delta: float) -> void:
+	if _skeleton == null:
+		return
+	var target := 1.0 if _controller.swing_active else 0.0
+	_swing_blend = move_toward(_swing_blend, target, swing_pose_blend_speed * delta)
+
+	if is_zero_approx(_swing_blend):
+		return
+
+	var lean := deg_to_rad(swing_lean_degrees) * _swing_blend
+	_rotate_bone(_spine_index, Vector3.RIGHT, lean)
+	for index in _thigh_indices.size():
+		_rotate_bone(_thigh_indices[index], Vector3.RIGHT, lean * 0.8)
+	for index in _knee_indices.size():
+		_rotate_bone(_knee_indices[index], Vector3.RIGHT, -lean * 0.9)
+
+
+## Rotação em torno de um eixo global, convertida para o espaço do osso. É a
+## mesma conversão que o Blender usou ao assar os clipes, então o resultado
+## combina com o que já está animado.
+func _rotate_bone(bone_index: int, world_axis: Vector3, angle: float) -> void:
+	if bone_index < 0:
+		return
+	var rest := _skeleton.get_bone_rest(bone_index).basis
+	var local := rest.inverse() * Basis(Quaternion(world_axis, angle)) * rest
+	_skeleton.set_bone_pose_rotation(bone_index, local.get_rotation_quaternion())
 
 
 ## Escolhe o clipe pela velocidade e sincroniza a reprodução com o deslocamento,
