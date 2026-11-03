@@ -45,6 +45,7 @@ func _run_tests() -> void:
 	await _test_collision(player)
 	_test_arena_blocks(arena)
 	await _test_hud(player)
+	await _test_model(player)
 
 	_finish()
 
@@ -271,6 +272,71 @@ func _test_hud(player: Node3D) -> void:
 	jump.pressed.emit()
 	await _wait_physics(12)
 	_check("botao de pulo faz o personagem pular", player.position.y > ground_y + 0.2, "(dy=%.2f)" % (player.position.y - ground_y))
+
+
+func _test_model(player: Node3D) -> void:
+	print("- Modelo do personagem e esqueleto")
+	var visual := player.get_node_or_null("Visual")
+	_check("no Visual existe", visual != null)
+	if visual == null:
+		return
+
+	var skeleton: Skeleton3D = null
+	for node in _all(visual):
+		if node is Skeleton3D:
+			skeleton = node
+			break
+	_check("esqueleto importado", skeleton != null)
+	if skeleton == null:
+		return
+	_check("esqueleto tem ossos", skeleton.get_bone_count() > 100, "(%d ossos)" % skeleton.get_bone_count())
+
+	var meshes: Array[Node] = []
+	for node in _all(visual):
+		if node is MeshInstance3D:
+			meshes.append(node)
+	_check("malhas do personagem presentes", meshes.size() >= 1, "(%d malhas)" % meshes.size())
+
+	var triangles := 0
+	for node in meshes:
+		var mesh: Mesh = (node as MeshInstance3D).mesh
+		for surface in mesh.get_surface_count():
+			var index_len: int = mesh.surface_get_array_index_len(surface)
+			triangles += (index_len if index_len > 0 else mesh.surface_get_array_len(surface)) / 3
+	_check("malha tem geometria", triangles > 1000, "(%d triangulos)" % triangles)
+
+	# O driver de animação deve mover os ossos quando o personagem anda.
+	var thigh := skeleton.find_bone("c_thigh_fk.l")
+	var knee := skeleton.find_bone("c_leg_fk.l")
+	_check("ossos animados existem", thigh >= 0 and knee >= 0)
+
+	await _reset(player, LANE_FREE)
+	player.set_move_vector(Vector2(0, -1))
+	await _wait_physics(40)
+	var samples: Array[float] = []
+	for _step in 12:
+		samples.append(skeleton.get_bone_pose_rotation(thigh).get_angle())
+		await _wait_physics(6)
+	player.set_move_vector(Vector2.ZERO)
+
+	var smallest := samples[0]
+	var largest := samples[0]
+	for value in samples:
+		smallest = minf(smallest, value)
+		largest = maxf(largest, value)
+	_check("osso da perna se move ao andar", largest - smallest > 0.05, "(%.3f rad de amplitude)" % (largest - smallest))
+
+	await _reset(player, LANE_FREE)
+	await _wait_physics(60)
+	_check("osso volta ao repouso parado", skeleton.get_bone_pose_rotation(thigh).get_angle() < 0.05,
+		"(%.3f rad)" % skeleton.get_bone_pose_rotation(thigh).get_angle())
+
+
+func _all(node: Node) -> Array[Node]:
+	var result: Array[Node] = [node]
+	for child in node.get_children():
+		result.append_array(_all(child))
+	return result
 
 
 func _finish() -> void:
