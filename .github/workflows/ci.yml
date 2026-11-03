@@ -50,6 +50,9 @@ jobs:
       - name: Validar execução headless
         run: godot --headless --path . --quit-after 10
 
+      - name: Rodar teste funcional do personagem
+        run: godot --headless --path . --script res://tools/tests/player_smoke_test.gd
+
       - name: Instalar SDK Android
         uses: android-actions/setup-android@v3
         with:

@@ -19,5 +19,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Modelos de terceiros: baixados localmente, nunca versionados
+assets/models/player/original/*
+!assets/models/player/original/README.md
+
 # Memória do agente OpenHands (local, não faz parte do jogo)
 .openhands/
