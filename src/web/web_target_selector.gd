@@ -56,6 +56,11 @@ extends Node3D
 
 @export_group("Pontuação")
 @export var continuity_weight: float = 1.0
+## Peso da âncora "à frente e longe": é o que faz o balanço render deslocamento
+## em vez de puxar o jogador contra a parede.
+@export var ahead_weight: float = 1.1
+## Peso da altura do ponto.
+@export var high_weight: float = 0.7
 @export var length_weight: float = 0.8
 @export var height_weight: float = 0.6
 @export var gain_weight: float = 0.5
@@ -201,6 +206,7 @@ func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
 		forward: Vector3, camera_forward: Vector3) -> float:
 	var point: Vector3 = candidate["position"]
 	var distance: float = candidate["distance"]
+	var rise: float = candidate["rise"]
 
 	# Continuidade: a ancoragem está à frente? O vetor da âncora, projetado na
 	# direção do movimento, precisa ser positivo — senão a teia puxaria o jogador
@@ -211,6 +217,19 @@ func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
 	if flat_to_anchor.length() > 0.01:
 		continuity = forward.dot(flat_to_anchor.normalized())
 
+	# Âncora à frente e alta. É o que evita o defeito de o jogador ser "puxado
+	# para o prédio": prender na face próxima faz o arco levar contra a parede,
+	# em vez de atravessar a rua. Preferimos o ponto que fica **além** do eixo do
+	# jogador e bem acima, para o arco passar por baixo e seguir em frente.
+	var ahead := 0.0
+	if flat_to_anchor.length() > 0.01:
+		var along := flat_to_anchor.length()
+		var lateral := absf(forward.cross(flat_to_anchor.normalized()).y)
+		# Quanto mais alinhado com a frente e quanto mais longe, melhor.
+		ahead = clampf(along / maxf(ideal_length_max, 1.0), 0.0, 1.0) * (1.0 - lateral)
+	# Altura: o ponto precisa estar claramente acima para o arco render.
+	var high := clampf(rise / maxf(max_rise, 1.0), 0.0, 1.0)
+
 	# Comprimento: 1.0 dentro da faixa ideal, caindo fora dela.
 	var length_score := 0.0
 	if distance >= ideal_length_min and distance <= ideal_length_max:
@@ -220,8 +239,7 @@ func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
 	else:
 		length_score = clampf(1.0 - (distance - ideal_length_max) / max_distance, 0.0, 1.0)
 
-	# Altura: preferimos o ponto que gera arco útil, nem rasteiro nem pendurado.
-	var rise: float = candidate["rise"]
+	# Altura: preferimos o ponto que gera arco util, nem rasteiro nem pendurado.
 	var height_score := 1.0 - absf(rise - (ideal_length_min * 0.6)) / maxf(max_rise, 1.0)
 	height_score = clampf(height_score, 0.0, 1.0)
 
@@ -236,6 +254,8 @@ func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
 		camera_score = maxf(0.0, camera_forward.dot(to_anchor.normalized()))
 
 	return continuity * continuity_weight \
+		+ ahead * ahead_weight \
+		+ high * high_weight \
 		+ length_score * length_weight \
 		+ height_score * height_weight \
 		+ gain_score * gain_weight \

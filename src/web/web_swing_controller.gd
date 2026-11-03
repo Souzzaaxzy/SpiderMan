@@ -64,6 +64,18 @@ const REEL_RATE := 7.0
 ## Ganho extra de impulso ao soltar. 1.0 = sem ganho.
 @export var release_boost: float = 1.0
 
+@export_group("Impulso de soltura (estilo Spider-Man 2)")
+## O impulso clássico do Spider-Man 2: soltar a teia no **ponto mais baixo do
+## arco** converte a queda em velocidade horizontal. O jogador sai voando para
+## frente em vez de ser puxado para o prédio.
+@export var swing_kick_enabled: bool = true
+## Velocidade mínima para o impulso valer.
+@export var swing_kick_min_speed: float = 6.0
+## Quanto da velocidade é somado como impulso horizontal.
+@export var swing_kick_gain: float = 0.45
+## Teto do impulso, em m/s.
+@export var swing_kick_max: float = 12.0
+
 var _controller: CharacterBody3D
 var _camera: Camera3D
 var _camera_rig: Node3D
@@ -169,7 +181,7 @@ func press() -> void:
 	fire()
 
 
-## Soltar o botão: solta a teia.
+## Solta o botão: solta a teia.
 func release() -> void:
 	set_reel_input(0.0)
 	if _state != State.SWINGING:
@@ -181,12 +193,41 @@ func release() -> void:
 	_controller.swing_active = false
 	if release_boost != 1.0:
 		_controller.velocity *= release_boost
+	# O impulso do Spider-Man 2: soltar no ponto baixo do arco converte a queda
+	# em velocidade horizontal. Sem isto o jogador é puxado na direção da âncora
+	# — que fica na face do prédio — em vez de seguir em frente.
+	_apply_swing_kick()
 	if _visual != null:
 		_visual.hide_strand()
 	if _camera_rig != null:
 		_camera_rig.reset_spring_length()
 
 	web_released.emit(_last_release_speed)
+
+
+## Converte a velocidade de queda em impulso horizontal, na direção do movimento.
+##
+## É o mecanismo central do balanço do Spider-Man 2: o jogador ganha velocidade
+## ao atravessar o ponto mais baixo do arco e solta ali, saindo em trajetória
+## balística para frente. Sem isto, a única coisa que sobra é a atração da corda
+## para a âncora, e o personagem parece "puxado" para o prédio.
+func _apply_swing_kick() -> void:
+	if not swing_kick_enabled or _controller == null:
+		return
+	var velocity := _controller.velocity
+	var flat := Vector3(velocity.x, 0.0, velocity.z)
+	if flat.length() < swing_kick_min_speed:
+		return
+	# O impulso vem da queda: quanto mais rápido vinha descendo, maior o ganho.
+	var falling := maxf(0.0, -velocity.y)
+	var gain := minf(falling * swing_kick_gain, swing_kick_max)
+	if gain <= 0.0:
+		return
+	var direction := flat.normalized()
+	_controller.velocity = Vector3(
+		velocity.x + direction.x * gain,
+		velocity.y,
+		velocity.z + direction.z * gain)
 
 
 ## Dispara a teia para o melhor ponto disponível, sem exigir mira.
