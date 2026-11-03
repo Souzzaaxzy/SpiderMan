@@ -6,10 +6,11 @@ original**, ambientado em uma representação de Nova York. Construído com
 em dispositivos Android modestos.
 
 > **Estado atual — MISSÃO 002 (personagem e movimentação).**
-> O personagem 3D está **importado e animado por esqueleto** (366 ossos), com
-> movimentação em terceira pessoa, controles touchscreen, câmera, pulo e um
-> cenário de teste. O rig **não veio com clipes de animação**, então a passada é
-> gerada em código a partir da velocidade.
+> O personagem 3D está **importado, com esqueleto de 366 ossos e quatro
+> animações** (`idle`, `walk`, `run`, `jump`), movimentação em terceira pessoa,
+> controles touchscreen, câmera, pulo e um cenário de teste. Os clipes são
+> gerados no Blender e assados no `.glb`, porque o rig depende de constraints
+> que não existem em glTF.
 >
 > ⚠️ O modelo é uma réplica de personagem protegido (Marvel/Sony), fornecido para
 > protótipo privado. **Não publicar nem distribuir.** Veja
@@ -90,7 +91,7 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │       └── optimized/textures/     # Texturas reduzidas para 1024 px
 ├── tools/
 │   ├── optimize_textures.py   # Reduz texturas para Android sem tocar no original
-│   ├── convert_model.py       # Converte a cena do Blender em .glb para a Godot
+│   ├── build_animations.py    # Gera clipes no Blender e exporta o .glb
 │   └── tests/                 # Teste funcional e inspeção, rodados pelo motor
 ├── docs/
 │   ├── ROADMAP.md
@@ -154,19 +155,31 @@ python3 tools/optimize_textures.py apply assets/models/player/original assets/mo
 são alterados. Texturas EXR são sinalizadas para conversão manual (o motor não
 processa EXR 8K em tempo de execução no Android).
 
-## Conversão do modelo
+## Conversão e animação do modelo
 
-O rig está na cena do Blender (os FBX fornecidos não têm esqueleto). A conversão
-para `.glb` é reproduzível:
+O rig está na cena do Blender (os FBX fornecidos não têm esqueleto). Um único
+script gera as animações e exporta o `.glb`:
 
 ```bash
-python3 tools/convert_model.py <caminho>/raimisuitblender5.0.blend \
+python3 tools/build_animations.py <caminho>/raimisuitblender5.0.blend \
     assets/models/player/optimized/textures \
     assets/models/player/spiderman_newlife.glb
 ```
 
 Requisitos: `pip install bpy` (o Blender como módulo Python). O script reponta as
-texturas embutidas para as versões otimizadas antes de exportar.
+texturas embutidas para as versões otimizadas, cria os clipes `idle`, `walk`,
+`run` e `jump`, e assa a pose de todos os 366 ossos antes de exportar.
+
+### Por que a animação é assada no Blender
+
+O rig é *Rigify* em modo IK: os ossos que deformam a malha recebem a pose de
+controles (`c_foot_ik.*`, `c_hand_ik.*`) através de **279 constraints**. Constraints
+não existem em glTF, então na Godot esses ossos ficavam presos — os braços não
+respondiam a nenhum comando. A solução é animar os controles no Blender, onde as
+constraints funcionam, e **assar** o resultado em chaves de todos os ossos. Na
+Godot só tocamos os clipes.
+
+O `AnimationPlayer` do `.glb` fica em `Visual/Model/AnimationPlayer`.
 
 ---
 

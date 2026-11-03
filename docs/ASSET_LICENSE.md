@@ -26,7 +26,7 @@ externos. Este documento não é parecer jurídico.
 | Malha | 407.182 triângulos / 342.745 vértices, 4 malhas (Body, Frames, Logos, Webs) |
 | Materiais | 8 (BlackSuit, Soles, Lens, Frames, Glass, Logos, Web, WebBlack) |
 | Texturas | 30 PNG, todas 4K (4096×4096) |
-| Animações | **0** |
+| Animações | **0** no arquivo; 4 geradas por `tools/build_animations.py` (`idle`, `walk`, `run`, `jump`) |
 | Altura | 2,084 m, com os pés na origem |
 | `blacksuit+no rig.fbx` | 3 malhas, **sem esqueleto** |
 | `blacksuit+mixamo rig.fbx` | 1 malha, **sem esqueleto** (o nome não corresponde ao conteúdo) |
@@ -79,7 +79,7 @@ por um herói original.**
 Os arquivos brutos ficam em `assets/models/player/original/` e **não são
 versionados** (`.gitignore`). O que entra no Git é apenas o `.glb` convertido
 (`assets/models/player/spiderman_newlife.glb`), gerado por
-`tools/convert_model.py`. As texturas otimizadas (1024 px) ficam embutidas nele.
+`tools/build_animations.py`. As texturas otimizadas (1024 px) ficam embutidas nele.
 
 ---
 

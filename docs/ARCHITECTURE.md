@@ -70,7 +70,7 @@ testar e desligar sistemas isoladamente.
 | Script | Papel |
 | --- | --- |
 | `src/player/player_controller.gd` | `CharacterBody3D`: velocidade, gravidade, pulo, rotação. |
-| `src/player/player_animation.gd` | Dirige os ossos do esqueleto pela velocidade; modo procedural se não houver esqueleto. |
+| `src/player/player_animation.gd` | Escolhe o clipe pela velocidade e sincroniza a reprodução; modo procedural se não houver clipes. |
 | `src/player/player_input.gd` | Registra as ações de teclado em tempo de execução. |
 | `src/camera/third_person_camera.gd` | Pivô da câmera: yaw/pitch, limites e arrasto. |
 | `src/ui/player_hud.gd` | Liga os controles de tela ao controlador e à câmera. |
@@ -99,24 +99,33 @@ de física, e a câmera não conhece o modelo.
 - **Otimização de texturas fora do motor.** `tools/optimize_textures.py` reduz
   para 1024 px e nunca escreve nos arquivos originais. EXR 8K é sinalizado para
   conversão manual, em vez de ser processado em tempo de execução no aparelho.
-- **Animação por ossos, não por clipes.** O rig é do tipo *Rigify*: os ossos com
-  peso na malha são filhos de ossos de controle `c_*`, e é girando o **pai** que
-  o filho se desloca. Além disso o rig **não traz nenhuma animação**. Por isso
-  `player_animation.gd` escreve a pose diretamente nos ossos a partir da
-  velocidade, convertendo a rotação de um eixo global para o espaço de cada osso
-  (`rest⁻¹ · R · rest`), o que torna o movimento previsível sem precisar
-  descobrir o eixo local de cada osso.
+- **Animação assada no Blender, não por script.** O rig é *Rigify* em modo IK:
+  os ossos que deformam a malha copiam a pose de controles (`c_foot_ik.*`,
+  `c_hand_ik.*`, `c_root.x`) por **279 constraints**. Constraints não existem em
+  glTF — ao importar, os braços e as pernas ficavam presos e nenhum comando os
+  movia. Por isso `tools/build_animations.py` anima os controles no Blender (onde
+  as constraints funcionam), assa o resultado em chaves dos 366 ossos e exporta
+  quatro clipes. Na Godot apenas tocamos os clipes; nada de constraints.
+- **Deslocamento em espaço mundial.** Os eixos locais dos controles IK estão
+  rotacionados em relação ao mundo, então o script converte cada deslocamento com
+  `matrix_local⁻¹ · delta` antes de aplicar. Sem isso, "mover o pé para frente"
+  virava um movimento lateral.
+- **Orientação do modelo.** O arquivo encara +Z no Blender→Godot, mas a frente na
+  Godot é −Z. O nó `Visual/Model` recebe rotação de 180° em Y, e o teste funcional
+  confere isso medindo a posição das lentes da máscara.
+- **Loop dos clipes.** O glTF não guarda informação de repetição: o importador
+  deixa tudo em "tocar uma vez". `player_animation.gd` marca os ciclos como
+  `LOOP_LINEAR` e o pulo como `LOOP_NONE` na inicialização.
 - **Conversão fora do Git.** Os brutos (FBX sem rig, `.blend` de 321 MB) não são
-  versionados. `tools/convert_model.py` produz um `.glb` de 40 MB com as texturas
-  otimizadas embutidas.
+  versionados. `tools/build_animations.py` produz um `.glb` de 41 MB com as
+  texturas otimizadas e as animações embutidas.
 
 ### Pendência do modelo
 
-O modelo é uma réplica de personagem protegido (Marvel/Sony) e o rig **não trouxe
-clipes de animação**. O personagem está importado e a passada é gerada em código
-a partir da velocidade. Antes de publicar o jogo, o personagem precisa ser
-substituído por um herói original — ver `ASSET_LICENSE.md`.
+O modelo é uma réplica de personagem protegido (Marvel/Sony). Antes de publicar o
+jogo, o personagem precisa ser substituído por um herói original — ver
+`ASSET_LICENSE.md`.
 
-`player_animation.gd` detecta o `Skeleton3D` automaticamente e escolhe entre
-dirigir o esqueleto real ou animar um bloco procedural de teste. Trocar o modelo
-não exige mexer no controlador.
+`player_animation.gd` procura os clipes no `AnimationPlayer` do modelo e cai em
+animação procedural se não os encontrar, então trocar o modelo não exige mexer no
+controlador.

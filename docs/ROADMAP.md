@@ -28,10 +28,11 @@ Legenda: ✅ concluído · ⏳ aguardando aprovação · ⬜ não iniciado
 - [x] Verificação de disponibilidade e licença do modelo (ver `ASSET_LICENSE.md`).
 - [x] Importação do modelo: rig de 366 ossos, 407.182 triângulos, 8 materiais.
 - [x] Otimizador de texturas para Android: 30 texturas 4K → 1024 px (126 MB → 14 MB).
-- [x] Conversão reproduzível da cena do Blender em `.glb` (`tools/convert_model.py`).
+- [x] Conversão reproduzível da cena do Blender em `.glb` (`tools/build_animations.py`).
+- [x] Quatro clipes de animação assados (`idle`, `walk`, `run`, `jump`).
 - [x] Personagem jogável com `CharacterBody3D`: caminhada, corrida, pulo,
       gravidade, colisões e rotação suave.
-- [x] Animação do esqueleto pela velocidade (o rig não trouxe clipes).
+- [x] Animação escolhida pela velocidade, tocando os clipes assados.
 - [x] Câmera em terceira pessoa com `SpringArm3D` e controle por toque.
 - [x] Controles touchscreen: joystick, área de câmera, botões de pulo e corrida.
 - [x] Cenário de teste: chão, prédios, plataformas, obstáculos, iluminação.
