@@ -269,6 +269,12 @@ func _test_physics() -> void:
 		_web.rope_length() <= WebSwingController.MAX_ROPE_LENGTH)
 
 	# 11 e 12. Soltura e preservação de velocidade.
+	#
+	# O impulso de soltura (estilo Spider-Man 2) SOMA velocidade por projeto, então
+	# a velocidade total pode subir. O que precisa ser preservado é a **direção** e
+	# o fato de não haver freio. Desligamos o impulso para medir a preservação pura.
+	var previous_kick: bool = _web.swing_kick_enabled
+	_web.swing_kick_enabled = false
 	var speed_before: float = _player.velocity.length()
 	var direction_before: Vector3 = _player.velocity.normalized()
 	_web.release()
@@ -280,6 +286,7 @@ func _test_physics() -> void:
 	_check("soltura nao zera a velocidade", speed_after > 1.0)
 	_check("estado liberado", not _web.is_busy())
 	_check("visual escondido", not _visual.is_showing())
+	_web.swing_kick_enabled = previous_kick
 
 	# 13. Colisões durante o balanço: o jogador não atravessa prédio.
 	var inside := await _count_inside_building(60)

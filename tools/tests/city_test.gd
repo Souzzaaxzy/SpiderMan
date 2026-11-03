@@ -9,10 +9,10 @@ extends SceneTree
 ## Uso: godot --headless --path . --script res://tools/tests/city_test.gd
 
 const DISTRICT_SCENE := "res://scenes/world/manhattan_district.tscn"
-## Rua junto ao prédio mais alto do distrito. Usada nas posições de teste para o
-## jogador não nascer dentro de um lote (17,4 m de lado), onde a colisão o
-## empurraria para baixo.
-const STREET_X := -28.0
+## Rua junto ao prédio mais alto do distrito. Com 5x5 quarteirões (célula de 68 m),
+## as ruas ficam em x = -170, -102, -34, 34, 102, 170. Usar a rua evita nascer
+## dentro de um lote, onde a colisão empurraria o jogador para baixo.
+const STREET_X := -34.0
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 
 var _failures: Array[String] = []
@@ -348,6 +348,11 @@ func _test_facade_anchoring() -> void:
 		await _wait(3)
 
 		tested += 1
+		# O seletor varre a partir da direcao do movimento, entao o teste precisa
+		# dar velocidade na direcao do predio — e o que o jogador faria correndo
+		# para ele. Sem isso o seletor varre para o lado e nao acha a fachada.
+		_player.velocity = (lot.center - _player.global_position).normalized() * 8.0
+		await _wait(2)
 		if _web.fire():
 			accepted += 1
 			_web.release()
@@ -407,9 +412,14 @@ func _test_expansion_readiness() -> void:
 	print("- Preparacao para expansao")
 	var city: CityGenerator = _district.call("city")
 	# A planta precisa poder gerar distritos maiores sem alterar código.
-	var bigger := CityLayout.generate_lots(5, 20261103)
+	var bigger: Array = CityLayout.generate_lots(7, 20261103)
 	_check("planta escala para distrito maior", bigger.size() > city.lots().size(),
-		"(%d lotes com 5x5 contra %d com 3x3)" % [bigger.size(), city.lots().size()])
+		"(%d lotes com 7x7 contra %d com 5x5)" % [bigger.size(), city.lots().size()])
+	# Parques e praças não têm prédio, então a contagem é menor que a grade cheia.
+	var blocks: Array = CityLayout.generate_blocks(5)
+	_check("regiao tem 25 quarteiroes", blocks.size() == 25, "(%d)" % blocks.size())
+	var parks: Array[Vector3] = CityLayout.parks(5)
+	_check("regiao tem parques", parks.size() >= 2, "(%d parques)" % parks.size())
 	_check("distrito organizado em no proprio",
 		_district.get_node_or_null("District") != null)
 	_check("geradores separados por responsabilidade",
