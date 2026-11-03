@@ -54,12 +54,18 @@ Legenda: ✅ concluído · ⏳ aguardando aprovação · ⬜ não iniciado
 - [x] Postura de balanço procedural discreta, sem alterar o rig original.
 - [x] Teste automatizado com 63 verificações; APK e CI verdes.
 
-## MISSÃO 004 — Blocos da cidade ⏳
+## MISSÃO 004 — Distrito de Manhattan ✅
 
-- [ ] Geração de quarteirões e ruas em grade.
-- [ ] Prédios com `MultiMeshInstance3D` para performance.
-- [ ] Streaming por chunks (carregar/descarregar por proximidade).
-- [ ] Iluminação e névoa otimizadas para Mobile.
+- [x] Geração de quarteirões, ruas, calçadas e faixas de pedestres em grade.
+- [x] Prédios de alturas variadas (12–78 m) com fachadas de janelas.
+- [x] Telhados acessíveis, com parapeito, caixa d'água, ar-condicionado e antena.
+- [x] Mobiliário urbano: postes, semáforos, placas e hidrantes.
+- [x] Colisões de prédio compatíveis com o detector de teias.
+- [x] Otimização: MultiMesh, material único, shader procedural, sem textura 4K.
+- [x] Iluminação e névoa para Mobile; base pronta para ciclo de dia/noite.
+- [x] Teste automatizado com 42 verificações; APK e CI verdes.
+- [ ] **Próximo:** LOD, occlusion culling e carregamento por região — necessários
+      antes de aumentar o distrito.
 
 ## MISSÃO 005 — Sistemas de mundo ⏳
 

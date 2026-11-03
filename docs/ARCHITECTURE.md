@@ -63,6 +63,23 @@ testar e desligar sistemas isoladamente.
 
 ---
 
+## Distrito urbano (MISSÃO 004)
+
+Ver [`DISTRICT.md`](DISTRICT.md) para dimensões e números. Decisões de
+arquitetura:
+
+- **Dados separados da montagem.** `city_layout.gd` só calcula posições; não
+  conhece nós. Isso permite testar a malha urbana sem instanciar geometria e
+  deixa cada gerador livre para decidir como desenhar.
+- **Um gerador por responsabilidade.** Ruas, prédios e mobiliário são nós
+  independentes sob o distrito, então qualquer um pode ser trocado isoladamente.
+- **O mundo expõe `spawn_position()`.** O módulo de gameplay não precisa saber
+  como o distrito é construído para posicionar o jogador.
+- **A arena de testes foi mantida.** `gameplay_module.gd` troca de região por
+  `world_scene`, então sistemas isolados continuam testáveis na arena simples.
+- **Prédios são `StaticBody3D`** porque é o tipo que o detector de teias aceita —
+  a integração com a MISSÃO 003 é por tipo de colisão, não por código.
+
 ## Sistema de teias (MISSÃO 003)
 
 Ver [`WEB_SWING.md`](WEB_SWING.md) para a física em detalhe. Resumo das decisões

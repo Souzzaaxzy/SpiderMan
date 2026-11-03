@@ -17,6 +17,11 @@ em dispositivos Android modestos.
 > linha visual da teia, câmera dinâmica e controles de toque. Veja
 > [`docs/WEB_SWING.md`](docs/WEB_SWING.md).
 >
+> A **MISSÃO 004** substituiu a arena de testes por um **distrito urbano**:
+> 9 quarteirões, 72 prédios de 12 a 78 m, ruas, calçadas, faixas de pedestres,
+> telhados acessíveis e mobiliário urbano. Veja
+> [`docs/DISTRICT.md`](docs/DISTRICT.md).
+>
 > ⚠️ O modelo é uma réplica de personagem protegido (Marvel/Sony), fornecido para
 > protótipo privado. **Não publicar nem distribuir.** Veja
 > [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md).
@@ -69,8 +74,10 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │   │   └── main.tscn          # Cena inicial: câmera + luz + bootstrap
 │   ├── player/
 │   │   └── player.tscn        # Personagem jogável (corpo, câmera, HUD de toque)
+│   ├── world/
+│   │   └── manhattan_district.tscn  # Primeira região urbana
 │   └── arena/
-│       └── test_arena.tscn    # Cenário de testes (chão, prédios, plataformas)
+│       └── test_arena.tscn    # Arena de testes (mantida para testes isolados)
 ├── src/
 │   ├── core/                  # Núcleo: bootstrap, arquitetura de módulos, cenário
 │   │   ├── game_bootstrap.gd
@@ -92,6 +99,14 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │   │   ├── web_anchor_detector.gd
 │   │   ├── web_physics.gd
 │   │   └── web_visual.gd
+│   ├── world/                 # Região urbana
+│   │   ├── world_manager.gd
+│   │   ├── city_generator.gd
+│   │   ├── city_layout.gd
+│   │   ├── road_generator.gd
+│   │   ├── building_generator.gd
+│   │   ├── street_furniture.gd
+│   │   └── facade.gdshader
 │   └── modules/               # Um diretório por sistema de gameplay
 │       └── gameplay/          # Instancia cenário + personagem no boot
 ├── assets/
@@ -107,6 +122,7 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │   ├── ROADMAP.md
 │   ├── ARCHITECTURE.md
 │   ├── WEB_SWING.md           # Física e decisões do sistema de teias
+│   ├── DISTRICT.md            # Dimensões e otimização da região urbana
 │   └── ASSET_LICENSE.md       # Licenças e limitações dos assets externos
 ├── build/android/             # Saída dos APKs (não versionada)
 └── .github/workflows/         # CI: headless + teste funcional + exportação de APK
@@ -142,10 +158,12 @@ controles de toque, no próprio motor):
 ```bash
 godot --headless --path . --script res://tools/tests/player_smoke_test.gd
 godot --headless --path . --script res://tools/tests/web_swing_test.gd
+godot --headless --path . --script res://tools/tests/city_test.gd
 ```
 
 Cada teste imprime suas verificações e termina com código de saída 1 se alguma
-falhar. Hoje são 50 verificações do personagem e 63 do sistema de teias.
+falhar. Hoje são 50 verificações do personagem, 63 do sistema de teias e 42 do
+distrito urbano.
 
 ## Controles
 
@@ -245,7 +263,7 @@ godot --headless --path . --export-debug "Android" build/android/SpiderManNewLif
 
 | Workflow | Gatilho | O que faz |
 | --- | --- | --- |
-| `ci.yml` | push / pull request | Importa o projeto, valida execução headless, roda os testes do personagem e do sistema de teias, e exporta um APK de debug como artefato. |
+| `ci.yml` | push / pull request | Importa o projeto, valida execução headless, roda os testes do personagem, das teias e do distrito, e exporta um APK de debug como artefato. |
 
 Os workflows baixam o Godot 4.7.2 e os export templates automaticamente, então
 não exigem nenhum binário versionado no repositório.
@@ -269,4 +287,5 @@ não exigem nenhum binário versionado no repositório.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — etapas de desenvolvimento.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — decisões técnicas.
 - [`docs/WEB_SWING.md`](docs/WEB_SWING.md) — física do balanço e sistema de teias.
+- [`docs/DISTRICT.md`](docs/DISTRICT.md) — dimensões e otimização do distrito urbano.
 - [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md) — licenças e limitações de uso.
