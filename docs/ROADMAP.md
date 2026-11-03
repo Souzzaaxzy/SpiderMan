@@ -80,8 +80,11 @@ Legenda: ✅ concluído · ⏳ aguardando aprovação · ⬜ não iniciado
 - [x] Máquina de 22 estados de animação, com alternativa declarada.
 - [x] Ajustes procedurais de braço, tronco e pernas (IK de rotação).
 - [x] 82 verificações de movimentação; APK e CI verdes.
-- [ ] **Pendente:** 20 dos 22 estados de animação rodam em clipe alternativo.
-      Os arquivos do Mixamo precisam ser fornecidos — ver `docs/ANIMATIONS.md`.
+- [x] **Animações do Mixamo integradas:** 15 clipes retargeted para o rig.
+      12 de 21 estados com clipe próprio (era 2 de 22).
+- [ ] **Pendente:** 9 estados ainda usam clipe alternativo (idle, jump_loop,
+      fall, air_move, web_shoot_*, web_zip, wall_climb, wall_jump). Ver
+      `docs/ANIMATIONS.md` para a lista de arquivos que resolveria cada um.
 - [ ] **Pendente:** Wall Run, Wall Climb e Wall Jump (mecânica, não só estado).
 - [ ] **Pendente:** Point Launch (arquitetura preparada).
 

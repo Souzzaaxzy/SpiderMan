@@ -25,8 +25,11 @@ em dispositivos Android modestos.
 > A **MISSÃO 005** reformulou a movimentação: **fim do teletransporte** (salto
 > por quadro caiu de 3,363 m para 0,351 m), **seleção automática de alvos** sem
 > exigir mira, **Web Zip** por impulso contínuo, câmera com FOV e inclinação
-> dinâmicos e uma máquina de 22 estados de animação. Veja
-> [`docs/MOVEMENT.md`](docs/MOVEMENT.md).
+> dinâmicos e uma máquina de 21 estados de animação.
+>
+> O modelo traz **15 animações retargeted do Mixamo** (caminhada, corrida, pulo,
+> queda, balanço, aterrissagem). Veja [`docs/MOVEMENT.md`](docs/MOVEMENT.md) e
+> [`docs/ANIMATIONS.md`](docs/ANIMATIONS.md).
 >
 > ⚠️ O modelo é uma réplica de personagem protegido (Marvel/Sony), fornecido para
 > protótipo privado. **Não publicar nem distribuir.** Veja
@@ -124,9 +127,10 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 │       ├── spiderman_newlife.glb   # Personagem convertido (rig + malhas)
 │       ├── original/               # Arquivos brutos recebidos (não versionados)
 │       └── optimized/textures/     # Texturas reduzidas para 1024 px
+├── assets/animations/mixamo/  # FBX do Mixamo (entrada do retargeting)
 ├── tools/
 │   ├── optimize_textures.py   # Reduz texturas para Android sem tocar no original
-│   ├── build_animations.py    # Gera clipes no Blender e exporta o .glb
+│   ├── retarget_animations.py # Retargeta o Mixamo para o rig e exporta o .glb
 │   └── tests/                 # Teste funcional e inspeção, rodados pelo motor
 ├── docs/
 │   ├── MOVEMENT.md            # Física, seleção de alvos e animações

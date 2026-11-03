@@ -142,12 +142,12 @@ Pode ser interrompido a qualquer momento (`cancel_zip()`).
 
 ### Situação real
 
-O modelo traz **quatro** clipes, gerados por nós no Blender
-(`tools/build_animations.py`): `idle`, `walk`, `run`, `jump`.
+O modelo traz **15 clipes**, retargeted das animações do Mixamo que o
+responsável subiu em `assets/animations/mixamo/`. O retargeting é feito por
+`tools/retarget_animations.py` e assado no `.glb` — ver
+[`ANIMATIONS.md`](ANIMATIONS.md) para o método e para o que ainda falta.
 
-**Não foi possível baixar animações do Mixamo neste ambiente.** O Mixamo exige
-login e não oferece download por URL direta. Nenhum arquivo de lá existe no
-projeto, e nada aqui finge o contrário.
+Dos 21 estados, **12 têm clipe próprio** e 9 usam alternativa declarada.
 
 ### O que foi feito
 
@@ -156,14 +156,13 @@ declarados. Cada um resolve para um clipe, com alternativa quando o ideal não
 existe:
 
 ```
-[anim] clipes disponiveis: [idle, jump, run, walk]
-[anim] estados com clipe proprio: 2 de 22
-[anim] 20 estados rodando em clipe alternativo
+[anim] estados com clipe proprio: 12 de 21
+[anim] 9 estados rodando em clipe alternativo
 [anim] nenhum estado ficou sem animacao (todos usam alternativa).
 ```
 
-Ou seja: **os 22 estados funcionam**, mas 20 deles rodam com o clipe errado
-(por exemplo, `sprint` usa o clipe de `run`). Isso é registrado, não escondido.
+Os 9 em alternativa **funcionam**, mas com o clipe errado. Isso é registrado no
+console a cada execução, não escondido.
 
 ### Ajustes procedurais (IK)
 
@@ -202,7 +201,9 @@ idênticos (girando e não girando a câmera) e confirma que a diferença é nul
 
 ## 7. Limites conhecidos
 
-- **20 dos 22 estados usam clipe alternativo.** Precisa das animações do Mixamo.
+- **9 de 21 estados usam clipe alternativo** (idle, jump_loop, fall, air_move,
+  web_shoot_*, web_zip, wall_climb, wall_jump). Ver `ANIMATIONS.md` para a lista
+  de arquivos que resolveria cada um.
 - **A corda é reta.** Não simula catenária nem enrola.
 - **Uma teia por vez.** A física já suporta duas (arranjo + laço), falta liberar
   o segundo disparo na entrada.
