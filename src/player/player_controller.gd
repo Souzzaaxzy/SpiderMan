@@ -37,7 +37,7 @@ enum WallState { NONE, CLIMBING }
 
 @export_group("Controle aéreo")
 ## Quanto o jogador consegue mudar de direção no ar. Baixo preserva o impulso.
-@export var air_control: float = 0.35
+@export var air_control: float = 0.30
 ## Amortecimento horizontal no ar, por segundo. 0 = nenhum.
 @export var air_drag: float = 0.15
 ## Amortecimento horizontal extra no ar, por segundo. Um valor maior faz o pulo
@@ -91,6 +91,9 @@ var _wall_normal: Vector3 = Vector3.ZERO
 var _wall_query: PhysicsRayQueryParameters3D
 ## Última direção desejada, usada pelo pulo duplo e pela escalada.
 var _last_direction: Vector3 = Vector3.ZERO
+## Teto de velocidade horizontal no ar, medido ao sair do chao. -1 = sem teto
+## (durante o balanco, por exemplo, o jogador deve poder acelerar).
+var _air_speed_cap: float = -1.0
 
 @onready var _visual: Node3D = get_node_or_null(visual_path)
 @onready var _camera_rig: Node3D = get_node_or_null(camera_rig_path)
@@ -211,16 +214,21 @@ func _apply_horizontal_movement(direction: Vector3, target_speed: float,
 	var desired := direction * target_speed
 
 	if grounded:
+		_air_speed_cap = -1.0
 		var rate := acceleration if direction != Vector3.ZERO else deceleration
 		horizontal = horizontal.move_toward(desired, rate * delta)
 	else:
 		# No ar o controle e parcial: o jogador ajusta a trajetoria sem apagar o
 		# impulso que ja tem. E o que preserva a inercia depois de soltar a teia.
-		# NAO ha teto duro de velocidade: um teto mataria o impulso do balanco ao
-		# soltar a teia. O que limita o pulo e o amortecimento, abaixo.
+		# NAO ha teto duro de velocidade — um teto mataria o impulso do balanco ao
+		# soltar a teia. O que impede o pulo de "voar" e o limite de controle:
+		# no ar o jogador nao acelera alem do que ja tinha ao sair do chao (com
+		# folga), entao um pulo segue o impulso em vez de ganhar distancia nova.
 		horizontal += desired * air_control * acceleration * delta
 		horizontal = horizontal.move_toward(Vector3.ZERO,
 				(air_drag + air_brake) * horizontal.length() * delta)
+		if _air_speed_cap > 0.0 and horizontal.length() > _air_speed_cap:
+			horizontal = horizontal.normalized() * _air_speed_cap
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 
@@ -230,6 +238,9 @@ func _apply_gravity(delta: float) -> void:
 		velocity.y = -0.1
 	elif not is_on_floor():
 		velocity.y -= gravity * delta
+		# Guarda o teto ao sair do chão: no ar o jogador não ganha velocidade nova.
+		if _air_speed_cap < 0.0 and not swing_active:
+			_air_speed_cap = maxf(current_speed() * 1.25, walk_speed)
 
 
 ## Pulo no chão (restaura os pulos extras) e pulo duplo no ar.
