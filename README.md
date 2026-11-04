@@ -31,8 +31,10 @@ em dispositivos Android modestos.
 > queda, balanço, aterrissagem). Veja [`docs/MOVEMENT.md`](docs/MOVEMENT.md) e
 > [`docs/ANIMATIONS.md`](docs/ANIMATIONS.md).
 >
-> ⚠️ O modelo é uma réplica de personagem protegido (Marvel/Sony), fornecido para
-> protótipo privado. **Não publicar nem distribuir.** Veja
+> ⚠️ O personagem agora é **original**, construído do zero por
+> `tools/build_character.py`: cabelo liso, rosto sério, olhos castanhos, blusa
+> térmica preta, blusa lisa preta, calça preta e tênis branco; 1,83 m. O modelo
+> antigo (réplica protegida Marvel/Sony) foi **substituído**. Veja
 > [`docs/ASSET_LICENSE.md`](docs/ASSET_LICENSE.md).
 
 ---

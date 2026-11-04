@@ -289,7 +289,7 @@ func _test_model(player: Node3D) -> void:
 	_check("esqueleto importado", skeleton != null)
 	if skeleton == null:
 		return
-	_check("esqueleto tem ossos", skeleton.get_bone_count() > 100, "(%d ossos)" % skeleton.get_bone_count())
+	_check("esqueleto tem ossos", skeleton.get_bone_count() >= 20, "(%d ossos)" % skeleton.get_bone_count())
 
 	var meshes: Array[Node] = []
 	for node in _all(visual):
@@ -306,9 +306,13 @@ func _test_model(player: Node3D) -> void:
 	_check("malha tem geometria", triangles > 1000, "(%d triangulos)" % triangles)
 
 	# O modelo precisa encarar -Z (frente da Godot), senão anda de costas.
-	# As lentes da máscara ficam na frente do rosto, então devem estar em -Z.
-	var lens_z := _lens_forward_offset(player)
-	_check("modelo virado para a frente (-Z)", lens_z < 0.0, "(lente em z=%.3f)" % lens_z)
+	# O osso do pé aponta para a frente do personagem.
+	var toe_index := skeleton.find_bone("LeftToeBase")
+	var foot_index := skeleton.find_bone("LeftFoot")
+	var facing := 0.0
+	if toe_index >= 0 and foot_index >= 0:
+		facing = skeleton.get_bone_global_pose(toe_index).origin.z - skeleton.get_bone_global_pose(foot_index).origin.z
+	_check("modelo virado para a frente (-Z)", facing < 0.0, "(pe->toe z=%.3f)" % facing)
 
 	# Os clipes assados no .glb devem estar disponíveis e tocar conforme a ação.
 	var animator := visual.get_node_or_null("Model/AnimationPlayer") as AnimationPlayer
@@ -366,7 +370,7 @@ func _test_model(player: Node3D) -> void:
 	await _reset(player, LANE_FREE)
 	player.set_move_vector(Vector2(0, -1))
 	await _wait_physics(40)
-	var foot := skeleton.find_bone("foot.l")
+	var foot := skeleton.find_bone("LeftFoot")
 	_check("osso do pe existe", foot >= 0)
 	var samples: Array[float] = []
 	for _step in 12:

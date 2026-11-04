@@ -57,7 +57,7 @@ const REEL_RATE := 7.0
 @export var camera_rig_path: NodePath = ^"../CameraRig"
 @export var selector_path: NodePath = ^"WebTargetSelector"
 @export var visual_path: NodePath = ^"WebVisual"
-@export var hand_bone_name: StringName = &"hand.r"
+@export var hand_bone_name: StringName = &"RightHand"
 @export var shoulder_height: float = 1.5
 
 @export_group("Balanço")

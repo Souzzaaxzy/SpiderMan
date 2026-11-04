@@ -54,7 +54,7 @@ web_path = NodePath("../WebSwing")
 script = ExtResource("9_anim_ik")
 controller_path = NodePath("..")
 web_path = NodePath("../WebSwing")
-skeleton_path = NodePath("../Visual/Model/rig/Skeleton3D")
+skeleton_path = NodePath("../Visual/Model/Armature/Skeleton3D")
 
 [node name="CameraRig" type="Node3D" parent="."]
 script = ExtResource("3_camera")

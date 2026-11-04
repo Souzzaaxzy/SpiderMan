@@ -22,13 +22,13 @@ extends Node
 @export_group("Referências")
 @export var controller_path: NodePath = ^".."
 @export var web_path: NodePath = ^"../WebSwing"
-@export var skeleton_path: NodePath = ^"../Visual/Model/rig/Skeleton3D"
+@export var skeleton_path: NodePath = ^"../Visual/Model/Armature/Skeleton3D"
 
 @export_group("Braços na teia")
 ## Quanto o braço do lado da teia levanta na direção da ancoragem, em graus.
 @export var arm_reach_degrees: float = 62.0
 @export var arm_reach_blend_speed: float = 5.0
-@export var upper_arm_bones: Array[StringName] = [&"c_shoulder.l", &"c_shoulder.r"]
+@export var upper_arm_bones: Array[StringName] = [&"LeftArm", &"RightArm"]
 ## Braço usado pela teia (índice em `upper_arm_bones`). 1 = direito.
 @export var web_arm_index: int = 1
 
@@ -36,14 +36,14 @@ extends Node
 ## Inclinação para frente conforme a aceleração horizontal, em graus.
 @export var max_lean_degrees: float = 12.0
 @export var lean_blend_speed: float = 4.0
-@export var spine_bone: StringName = &"c_spine_02.x"
+@export var spine_bone: StringName = &"Spine2"
 
 @export_group("Pernas")
 ## Recolhimento das pernas durante o balanço e a queda, em graus.
 @export var tuck_degrees: float = 18.0
 @export var tuck_blend_speed: float = 4.0
-@export var thigh_bones: Array[StringName] = [&"c_thigh_fk.l", &"c_thigh_fk.r"]
-@export var knee_bones: Array[StringName] = [&"c_leg_fk.l", &"c_leg_fk.r"]
+@export var thigh_bones: Array[StringName] = [&"LeftUpLeg", &"RightUpLeg"]
+@export var knee_bones: Array[StringName] = [&"LeftLeg", &"RightLeg"]
 
 var _controller: CharacterBody3D
 var _web: Node
