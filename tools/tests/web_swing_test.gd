@@ -456,8 +456,19 @@ func _test_animation() -> void:
 		_check("balanco entra em swing_loop",
 			_animation.current_state() == "swing_loop",
 			"(%s)" % _animation.current_state())
+		# O ajuste procedural (IK) precisa SOMAR ao clipe, nao substitui-lo: antes
+		# ele apagava a rotacao animada e o corpo saltava quadro a quadro.
+		var hand := _skeleton.find_bone(&"RightHand")
+		var prev := _skeleton.get_bone_global_pose(hand).origin
+		var worst := 0.0
+		for _step in 40:
+			await physics_frame
+			var pos := _skeleton.get_bone_global_pose(hand).origin
+			worst = maxf(worst, pos.distance_to(prev))
+			prev = pos
+		_check("balanco sem salto de pose (mao direita)", worst < 0.5,
+			"(maior salto/quadro = %.3f m)" % worst)
 		_web.release()
-		await _wait(20)
 
 	await _reset(Vector3(-28.0, 60.0, -12.3))
 	await _wait(40)

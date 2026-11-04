@@ -162,13 +162,20 @@ func _apply_lean(delta: float) -> void:
 	_rotate_bone(_spine, Vector3.RIGHT, deg_to_rad(max_lean_degrees) * _lean_blend)
 
 
-## Rotação em torno de um eixo global, convertida para o espaço do osso.
+## Rotação em torno de um eixo global, **somada** à pose atual do osso.
+##
+## O ajuste é procedural: ele precisa **somar** ao clipe que está tocando, não
+## substituí-lo. A versão anterior chamava `set_bone_pose_rotation` só com o
+## ajuste, apagando a rotação animada — durante o balanço o braço, as pernas e o
+## tronco saltavam entre a pose do clipe e a procedural, quadro a quadro. Era o
+## "fica todo bugado ao soltar a teia".
 func _rotate_bone(bone_index: int, world_axis: Vector3, angle: float) -> void:
 	if bone_index < 0 or world_axis.length() < 0.0001:
 		return
 	var rest := _skeleton.get_bone_rest(bone_index).basis
-	var local := rest.inverse() * Basis(Quaternion(world_axis.normalized(), angle)) * rest
-	_skeleton.set_bone_pose_rotation(bone_index, local.get_rotation_quaternion())
+	var offset := rest.inverse() * Basis(Quaternion(world_axis.normalized(), angle)) * rest
+	var current := _skeleton.get_bone_pose_rotation(bone_index)
+	_skeleton.set_bone_pose_rotation(bone_index, current * offset.get_rotation_quaternion())
 
 
 func reach_blend() -> float:
