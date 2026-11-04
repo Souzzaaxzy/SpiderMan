@@ -15,8 +15,6 @@ extends Node3D
 ## Emissão fraca: a teia fica legível mesmo contra o céu claro.
 @export var emission_energy: float = 0.35
 @export var roughness: float = 0.4
-## Raio do "respingo" de teia no ponto de ancoragem, em metros. 0 desliga.
-@export var anchor_splat_radius: float = 0.16
 
 ## Ponto de origem, no espaço global (normalmente a mão do jogador).
 var source: Vector3 = Vector3.ZERO
@@ -26,7 +24,6 @@ var target: Vector3 = Vector3.ZERO
 var _mesh_instance: MeshInstance3D
 var _cylinder: CylinderMesh
 var _material: StandardMaterial3D
-var _splat: MeshInstance3D
 
 
 func _ready() -> void:
@@ -54,18 +51,6 @@ func _ready() -> void:
 	_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_mesh_instance)
 
-	# Respingo no ponto de ancoragem: lê como "a teia grudou ali".
-	var splat_mesh := SphereMesh.new()
-	splat_mesh.radius = 1.0
-	splat_mesh.height = 2.0
-	splat_mesh.radial_segments = 10
-	splat_mesh.rings = 6
-	_splat = MeshInstance3D.new()
-	_splat.name = "AnchorSplat"
-	_splat.mesh = splat_mesh
-	_splat.material_override = _material
-	_splat.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_splat)
 	visible = false
 
 

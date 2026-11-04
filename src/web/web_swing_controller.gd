@@ -35,6 +35,12 @@ enum State { IDLE, SWINGING, ZIPPING }
 const ROPE_SLACK := 1.0
 ## Altura mínima do ponto mais baixo do arco, acima do piso.
 const MIN_ARC_HEIGHT := 1.6
+## Altura minima do arco acima do piso DURANTE o balanco. Maior que a do
+## disparo: o arco inteiro precisa caber acima do chao, senao o jogador e
+## arrastado para o asfalto (era o defeito de "bater de cara no predio").
+const SWING_CLEARANCE := 3.4
+## Quanto a corda encurta por segundo para manter o arco acima do piso.
+const CLEARANCE_PULL_RATE := 8.0
 ## Limites do comprimento ajustável.
 const MIN_ROPE_LENGTH := 3.0
 const MAX_ROPE_LENGTH := 60.0
@@ -86,12 +92,12 @@ const REEL_RATE := 7.0
 
 @export_group("Afastamento da parede")
 ## A partir de que distância da parede o empurrão começa, em metros.
-@export var wall_push_distance: float = 4.5
+@export var wall_push_distance: float = 6.5
 ## Força do empurrão para fora da parede, em m/s². É o que mantém o personagem
 ## balançando **longe** da fachada em vez de raspando nela.
-@export var wall_push_strength: float = 12.0
+@export var wall_push_strength: float = 20.0
 ## Alcance do raio que procura a parede à frente, em metros.
-@export var wall_probe_distance: float = 6.0
+@export var wall_probe_distance: float = 9.0
 
 var _controller: CharacterBody3D
 var _camera: Camera3D
@@ -266,7 +272,7 @@ func fire() -> bool:
 	# jogador nem um milímetro. É o fim do tranco no disparo.
 	var length := WebPhysics.length_without_snap(body_position(), anchor, MIN_ROPE_LENGTH)
 	length = minf(length, MAX_ROPE_LENGTH)
-	length = WebPhysics.safe_length(anchor, length, _floor_height + MIN_ARC_HEIGHT)
+	length = WebPhysics.safe_length(anchor, length, _floor_height + SWING_CLEARANCE)
 
 	_anchors = [anchor]
 	_rope_lengths = [length]
@@ -399,6 +405,13 @@ func _step_swing_velocity(delta: float) -> bool:
 		return false
 
 	_update_floor_reference()
+	# Mantem o arco inteiro acima do piso: se a corda for longa demais para o
+	# fundo do arco caber acima do chao, ela encurta sozinha (suave, nao num
+	# tranco). E o truque que o Insomniac usa para o jogador nao raspar no chao.
+	var clearance := _floor_height + SWING_CLEARANCE
+	var allowed := _anchors[0].y - clearance
+	if allowed > MIN_ROPE_LENGTH and _rope_lengths[0] > allowed:
+		_rope_lengths[0] = maxf(allowed, _rope_lengths[0] - CLEARANCE_PULL_RATE * delta)
 	if _reel_input != 0.0:
 		set_rope_length(_rope_lengths[0] - _reel_input * REEL_RATE * delta)
 
@@ -414,6 +427,13 @@ func _step_swing_velocity(delta: float) -> bool:
 	# velocidade na direção da normal (para fora).
 	velocity = _push_away_from_wall(velocity, delta)
 
+	# Assistencia de piso: se o corpo está chegando perto do chao, soma um pouco de
+	# velocidade para cima. Evita o arco "raspar" o asfalto e o jogador bater de
+	# cara no predio — o mesmo truque que os jogos do Aranha usam.
+	var floor_limit := _floor_height + SWING_CLEARANCE * 0.5
+	if _controller.global_position.y < floor_limit and velocity.y < 0.0:
+		velocity.y += (floor_limit - _controller.global_position.y) * 6.0
+
 	_controller.velocity = WebPhysics.clamp_speed(velocity)
 	return true
 
@@ -427,37 +447,48 @@ func _step_swing_velocity(delta: float) -> bool:
 func _push_away_from_wall(velocity: Vector3, delta: float) -> Vector3:
 	if _controller == null:
 		return velocity
-	var flat := Vector3(velocity.x, 0.0, velocity.z)
-	if flat.length() < 0.5:
-		return velocity
 	var world := _controller.get_world_3d()
 	if world == null:
 		return velocity
-	var direction := flat.normalized()
 	var from := body_position()
+	# Duas sondagens: na direção do movimento E na direção da âncora (a fachada em
+	# que a teia está presa). A segunda é o que evita o jogador "bater de cara" no
+	# prédio da própria teia, que era o defeito relatado.
+	var probes: Array[Vector3] = []
+	var flat := Vector3(velocity.x, 0.0, velocity.z)
+	if flat.length() > 0.5:
+		probes.append(flat.normalized())
+	var to_anchor := _anchors[0] - from
+	to_anchor.y = 0.0
+	if to_anchor.length() > 0.5:
+		probes.append(to_anchor.normalized())
+	if probes.is_empty():
+		return velocity
+
 	var query := PhysicsRayQueryParameters3D.new()
-	query.from = from
-	query.to = from + direction * wall_probe_distance
 	query.exclude = [_controller.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
-	var hit := world.direct_space_state.intersect_ray(query)
-	if hit.is_empty():
-		return velocity
-	var normal: Vector3 = hit["normal"]
-	# Só a componente horizontal da normal interessa: queremos afastar da parede,
-	# não empurrar para cima ou para baixo.
-	var flat_normal := Vector3(normal.x, 0.0, normal.z)
-	if flat_normal.length() < 0.01:
-		return velocity
-	flat_normal = flat_normal.normalized()
-	var distance: float = from.distance_to(hit["position"])
-	var strength := wall_push_strength * clampf(
-		1.0 - distance / maxf(wall_push_distance, 0.001), 0.0, 1.0)
-	# Só empurra se ainda não estiver se afastando o bastante.
-	var outward := velocity.dot(flat_normal)
-	if outward < strength:
-		velocity += flat_normal * (strength - outward) * delta * 4.0
+	for direction: Vector3 in probes:
+		query.from = from
+		query.to = from + direction * wall_probe_distance
+		var hit := world.direct_space_state.intersect_ray(query)
+		if hit.is_empty():
+			continue
+		var normal: Vector3 = hit["normal"]
+		# Só a componente horizontal da normal interessa: queremos afastar da
+		# parede, não empurrar para cima ou para baixo.
+		var flat_normal := Vector3(normal.x, 0.0, normal.z)
+		if flat_normal.length() < 0.01:
+			continue
+		flat_normal = flat_normal.normalized()
+		var distance: float = from.distance_to(hit["position"])
+		var strength := wall_push_strength * clampf(
+			1.0 - distance / maxf(wall_push_distance, 0.001), 0.0, 1.0)
+		# Só empurra se ainda não estiver se afastando o bastante.
+		var outward := velocity.dot(flat_normal)
+		if outward < strength:
+			velocity += flat_normal * (strength - outward) * delta * 4.0
 	return velocity
 
 

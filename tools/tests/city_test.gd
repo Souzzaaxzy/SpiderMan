@@ -57,6 +57,7 @@ func _run() -> void:
 	await _test_rooftop_access()
 	await _test_web_between_buildings()
 	await _test_facade_anchoring()
+	await _test_wall_climb()
 	_test_no_errors()
 	_test_mobile_renderer()
 	await _test_day_night_and_weather()
@@ -237,6 +238,60 @@ func _test_rooftop_access() -> void:
 	_check("existem predios de varias alturas",
 		heights[-1] - heights[0] > 25.0,
 		"(%.0f m a %.0f m)" % [heights[0], heights[-1]])
+
+
+# --- 5b. Escalada de parede ---
+
+func _test_wall_climb() -> void:
+	print("- Escalada de parede")
+	var city: CityGenerator = _district.call("city")
+	if _web.is_busy():
+		_web.release()
+		_web.cancel_zip()
+	var lots: Array = city.lots()
+	if lots.is_empty():
+		return
+	# Lote mais proximo da rua, para o pulo contra a fachada.
+	var lot: CityLayout.Lot = lots[0]
+	var best := INF
+	for candidate: CityLayout.Lot in lots:
+		var dist: float = absf(candidate.center.x - STREET_X) + absf(candidate.center.z) * 0.05
+		if dist < best and candidate.height > 15.0:
+			best = dist
+			lot = candidate
+		# A camera precisa estar alinhada ao mundo, senao o joystick (relativo a ela)
+		# aponta para o lado errado.
+		var rig := _player.get_node_or_null("CameraRig") as ThirdPersonCamera
+		if rig != null:
+			rig.set_yaw(0.0)
+	var approach := Vector3(STREET_X, lot.height * 0.3, lot.center.z)
+	_player.global_position = approach
+	_player.velocity = Vector3.ZERO
+	await _wait(5)
+	var to_wall := lot.center - approach
+	to_wall.y = 0.0
+	to_wall = to_wall.normalized()
+	_player.set_move_vector(Vector2(1.0 if to_wall.x > 0.0 else -1.0, 0))
+	_player.velocity = to_wall * 6.0 + Vector3(0.0, -3.0, 0.0)
+	var climbed := false
+	var start_y := 0.0
+	for _step in 120:
+		await physics_frame
+		if _player.is_climbing():
+			if not climbed:
+				start_y = _player.global_position.y
+			climbed = true
+	_check("pular na parede comeca a escalar", climbed)
+	_check("a escalada sobe pela fachada",
+			_player.global_position.y - start_y > 1.0,
+			"(subiu %.1f m)" % (_player.global_position.y - start_y))
+	if climbed:
+		_player.set_jump_requested()
+		await _wait(6)
+		_check("pular na parede solta o jogador", not _player.is_climbing())
+		_check("o pulo de parede empurra para cima", _player.velocity.y > 2.0,
+			"(vy=%.1f)" % _player.velocity.y)
+	_player.set_move_vector(Vector2.ZERO)
 
 
 # --- 5. Teias entre os edifícios ---

@@ -139,6 +139,25 @@ func _test_jump(player: Node3D) -> void:
 	_check("voltou ao chao", player.is_on_floor(), "(y=%.2f)" % player.position.y)
 
 
+	# Pulo duplo: um segundo pulo no ar sobe alem do primeiro.
+	await _reset(player, LANE_FREE)
+	var single_apex := player.position.y
+	player.set_jump_requested()
+	for _step in 45:
+		await physics_frame
+		single_apex = maxf(single_apex, player.position.y)
+	await _reset(player, LANE_FREE)
+	var double_apex := player.position.y
+	player.set_jump_requested()
+	for _step in 45:
+		await physics_frame
+		if _step == 14:
+			player.set_jump_requested()
+		double_apex = maxf(double_apex, player.position.y)
+	_check("pulo duplo sobe mais que o simples",
+			double_apex - single_apex > 0.4,
+			"(simples=%.2f m, duplo=%.2f m)" % [single_apex, double_apex])
+
 func _test_rotation(player: Node3D) -> void:
 	print("- Rotacao suave")
 	await _reset(player, LANE_FREE)

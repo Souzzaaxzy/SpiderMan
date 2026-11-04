@@ -42,7 +42,7 @@ extends Node
 @export var run_speed_reference: float = 7.0
 
 @export_group("Transições")
-@export var fall_delay: float = 0.25
+@export var fall_delay: float = 0.12
 ## Suavização do parâmetro do BlendSpace. Baixo = transição mais fluida.
 @export var blend_smoothing: float = 6.0
 
@@ -115,8 +115,9 @@ func _build_tree() -> void:
 	var states := {
 		"Locomotion": locomotion,
 	}
-	for state_name in ["jump_start", "jump_loop", "fall", "land", "land_roll",
-			"swing_loop", "swing_start", "swing_release", "web_zip", "wall_run"]:
+	for state_name in ["jump_start", "jump_loop", "fall", "air_move", "land", "land_roll",
+			"swing_loop", "swing_start", "swing_release", "web_zip",
+			"wall_run", "wall_climb", "wall_jump"]:
 		var clip := PlayerAnimationLibrary.resolve(state_name, _available)
 		if clip == &"":
 			continue
@@ -200,11 +201,19 @@ func _resolve_state() -> String:
 		if _web.is_swinging():
 			return "swing_loop"
 
+	# Escalada de parede tem prioridade sobre os estados aereos.
+	if _controller.has_method("is_climbing") and _controller.is_climbing():
+		return "wall_climb"
+
 	if not _controller.is_grounded():
 		if _airborne_time < fall_delay:
 			return "jump_start"
 		if _controller.velocity.y > 0.5:
 			return "jump_loop"
+		# Caindo: se o jogador se move bastante no ar, usa o clipe de movimento
+		# aereo; senao, o de queda.
+		if _controller.current_speed() > 2.0:
+			return "air_move"
 		return "fall"
 
 	var speed: float = _controller.current_speed()

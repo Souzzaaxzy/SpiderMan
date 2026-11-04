@@ -25,7 +25,7 @@ const REQUIRED_CLIPS := {
 	"start_run": "start_run",
 	"turn": "turn",
 	# Aérea
-	"jump_start": "standing_jump",
+	"jump_start": "jump_loop",
 	"land": "falling_to_landing",
 	"land_roll": "land_roll",
 	# Teias
@@ -51,19 +51,20 @@ const AVAILABLE_CLIPS: Array[StringName] = [
 	&"standing_jump", &"falling_to_landing", &"land_roll",
 	&"swing_start", &"swing_loop", &"swing_release", &"swing_to_land",
 	&"swing_into_wall", &"wall_run", &"low_crawl",
+	&"fall", &"jump_loop", &"air_move", &"wall_climb", &"wall_jump",
 ]
 
 ## Alternativa usada quando o clipe ideal não existe.
 const FALLBACKS := {
 	"idle": "walking",
-	"jump_loop": "standing_jump",
-	"fall": "standing_jump",
-	"air_move": "standing_jump",
+	"jump_loop": "jump_loop",
+	"fall": "fall",
+	"air_move": "air_move",
 	"web_shoot_l": "swing_start",
 	"web_shoot_r": "swing_start",
 	"web_zip": "swing_start",
-	"wall_climb": "wall_run",
-	"wall_jump": "standing_jump",
+	"wall_climb": "wall_climb",
+	"wall_jump": "wall_jump",
 }
 
 ## Nomes alternativos que o importador da Godot pode usar para o mesmo clipe.
@@ -72,6 +73,8 @@ const FALLBACKS := {
 ## no log do jogo. Em vez de depender do nome exato, o resolvedor aceita os dois.
 const ALIASES := {
 	"swing_loop": ["swing", "swinging"],
+	# O importador da Godot entrega "jump" para o clipe "jump_loop".
+	"jump_loop": ["jump"],
 	"standing_jump": ["jump"],
 	"walking": ["walk"],
 	"falling_to_landing": ["landing", "fall_to_landing"],
