@@ -130,3 +130,28 @@ ou os prédios isoladamente.
   colisão, então o jogador anda por cima deles.
 - **Fachada é um shader, não arte.** Não há vitrines, letreiros ou variação real
   de material entre prédios — só cor e padrão de janela.
+
+## Ciclo de dia/noite e clima (nov/2026)
+
+`src/world/world_climate.gd` controla o ambiente ao longo do tempo.
+
+- **Dia/noite**: o sol percorre um arco leste-oeste; o céu, o ambiente e a névoa
+  escurecem conforme a hora. Um ciclo completo dura **4 minutos** (configurável).
+  Paletas: noite, amanhecer, dia e entardecer, interpoladas.
+- **Clima**: alterna entre **limpo**, **nublado** e **chuva** a cada ~45 s, com
+  transição suave. O clima dessatura o céu, engrossa a névoa e enfraquece o sol.
+- Custo: só atualização de uniformes (rotação de luz e cores) — nada de geometria.
+
+Medido (brilho médio da cena): manhã quente (122, 89, 79), meio-dia claro
+(123, 134, 154), nublado (128, 121, 123), noite escura (8, 10, 22), chuva
+acinzentada (161, 165, 170). O sol vai de **1,27** de energia ao meio-dia a
+**0,12** de noite.
+
+## Cidade maior e mais viva
+
+- Grade **7×7 = 49 quarteirões**, **336 prédios**, **492 m** de extensão.
+- **Parque central completo** (bloco 2×2 no miolo) com coreto, bancos e
+  canteiros de flores, além dos dois parques de canto.
+- **Hotéis**: torres de 40 a 85 m com faixas de varanda e letreiro no topo.
+- Mobiliário: 480 postes, 128 semáforos, 134 placas, 150 hidrantes.
+- Tudo continua em MultiMesh (poucas chamadas de renderização).

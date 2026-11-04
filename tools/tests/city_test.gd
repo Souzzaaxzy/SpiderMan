@@ -59,6 +59,7 @@ func _run() -> void:
 	await _test_facade_anchoring()
 	_test_no_errors()
 	_test_mobile_renderer()
+	await _test_day_night_and_weather()
 	_test_expansion_readiness()
 	_report_metrics(generation_ms)
 
@@ -408,13 +409,52 @@ func _test_mobile_renderer() -> void:
 		ProjectSettings.get_setting("rendering/textures/vram_compression/import_etc2_astc", false))
 
 
+func _test_day_night_and_weather() -> void:
+	print("- Ciclo de dia/noite e clima")
+	var climate: WorldClimate = _district.call("climate")
+	_check("controlador de clima presente", climate != null)
+	if climate == null:
+		return
+	# A hora muda e o sol muda junto.
+	climate.auto_advance = false
+	climate.set_time_of_day(0.5)
+	var noon_sun := _find_sun()
+	var noon_energy: float = noon_sun.light_energy if noon_sun != null else 0.0
+	var noon_night: bool = climate.is_night()
+	climate.set_time_of_day(0.0)
+	var midnight_energy: float = noon_sun.light_energy if noon_sun != null else 0.0
+	var midnight_night: bool = climate.is_night()
+	_check("meio-dia nao e noite", not noon_night)
+	_check("meia-noite e noite", midnight_night)
+	_check("sol mais forte de dia que de noite", noon_energy > midnight_energy + 0.3,
+		"(dia %.2f, noite %.2f)" % [noon_energy, midnight_energy])
+	# O clima muda e afeta a nevoa.
+	climate.set_weather(WorldClimate.Weather.RAIN)
+	for _step in 30:
+		await process_frame
+	var rainy := climate.weather_name()
+	climate.set_weather(WorldClimate.Weather.CLEAR)
+	for _step in 30:
+		await process_frame
+	var clear := climate.weather_name()
+	_check("clima troca de estado", rainy == "chuva" and clear == "limpo",
+		"(%s -> %s)" % [rainy, clear])
+	climate.auto_advance = true
+
+
+func _find_sun() -> DirectionalLight3D:
+	for node in _find_all(_district, "DirectionalLight3D"):
+		return node as DirectionalLight3D
+	return null
+
+
 func _test_expansion_readiness() -> void:
 	print("- Preparacao para expansao")
 	var city: CityGenerator = _district.call("city")
 	# A planta precisa poder gerar distritos maiores sem alterar código.
-	var bigger: Array = CityLayout.generate_lots(7, 20261103)
+	var bigger: Array = CityLayout.generate_lots(9, 20261103)
 	_check("planta escala para distrito maior", bigger.size() > city.lots().size(),
-		"(%d lotes com 7x7 contra %d com 5x5)" % [bigger.size(), city.lots().size()])
+		"(%d lotes com 9x9 contra %d no distrito)" % [bigger.size(), city.lots().size()])
 	# Parques e praças não têm prédio, então a contagem é menor que a grade cheia.
 	var blocks: Array = CityLayout.generate_blocks(5)
 	_check("regiao tem 25 quarteiroes", blocks.size() == 25, "(%d)" % blocks.size())

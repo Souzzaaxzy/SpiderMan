@@ -369,6 +369,7 @@ func _test_zip() -> void:
 	# 16. Deslocamento contínuo: o jogador se aproxima do alvo sem saltos.
 	var target: Vector3 = _web.zip_target()
 	var start_distance: float = _player.global_position.distance_to(target)
+	var closest: float = start_distance
 	var max_jump: float = 0.0
 	var prev: Vector3 = _player.global_position
 	var speed_peak: float = 0.0
@@ -377,10 +378,12 @@ func _test_zip() -> void:
 		max_jump = maxf(max_jump, prev.distance_to(_player.global_position))
 		prev = _player.global_position
 		speed_peak = maxf(speed_peak, _player.velocity.length())
-	var end_distance: float = _player.global_position.distance_to(target)
+		closest = minf(closest, _player.global_position.distance_to(target))
 
-	_check("aproximou do alvo", end_distance < start_distance - 1.0,
-		"(%.1f -> %.1f m)" % [start_distance, end_distance])
+	# O zip termina sozinho ao chegar; medir o ponto mais próximo é o que mostra
+	# que ele realmente puxou o jogador até o alvo (depois ele segue por inércia).
+	_check("aproximou do alvo", closest < start_distance - 1.0,
+		"(%.1f -> %.1f m)" % [start_distance, closest])
 	_check("deslocamento continuo (sem teletransporte)", max_jump < 1.0,
 		"(maior salto %.4f m)" % max_jump)
 	_check("acelerou na direcao do alvo", speed_peak > 3.0,

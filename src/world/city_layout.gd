@@ -16,6 +16,7 @@ extends RefCounted
 ## - `PARK`: área verde com árvores, lago e caminhos. Quebra a monotonia de
 ##   concreto e dá referência visual de deslocamento.
 ## - `PLAZA`: praça aberta, com poucos prédios.
+## - `HOTEL`: torre hoteleira, com varandas em faixas e letreiro no topo.
 ##
 ## A distribuição é determinística (semente fixa), então o resultado é
 ## reproduzível nos testes.
@@ -34,6 +35,8 @@ const TOWER_MIN_HEIGHT := 55.0
 const TOWER_MAX_HEIGHT := 130.0
 const COMMERCIAL_MIN_HEIGHT := 22.0
 const COMMERCIAL_MAX_HEIGHT := 50.0
+const HOTEL_MIN_HEIGHT := 40.0
+const HOTEL_MAX_HEIGHT := 85.0
 const RESIDENTIAL_MIN_HEIGHT := 12.0
 const RESIDENTIAL_MAX_HEIGHT := 28.0
 
@@ -51,7 +54,7 @@ const WORLD_MARGIN := 90.0
 ## Altura das paredes invisíveis que limitam a região.
 const WORLD_WALL_HEIGHT := 500.0
 
-enum BlockKind { TOWER, COMMERCIAL, RESIDENTIAL, PARK, PLAZA }
+enum BlockKind { TOWER, COMMERCIAL, RESIDENTIAL, PARK, PLAZA, HOTEL }
 
 
 ## Um lote: onde fica um prédio e o quanto ele ocupa.
@@ -60,12 +63,17 @@ class Lot extends RefCounted:
 	var size: Vector2  ## largura (x) e profundidade (z)
 	var height: float
 	var distance_to_center: float
+	## Tipo do quarteirão de origem. O gerador de prédios usa isto para decidir
+	## detalhes (varandas de hotel, por exemplo).
+	var kind: int
 
-	func _init(p_center: Vector3, p_size: Vector2, p_height: float, p_distance: float) -> void:
+	func _init(p_center: Vector3, p_size: Vector2, p_height: float, p_distance: float,
+			p_kind: int = 0) -> void:
 		center = p_center
 		size = p_size
 		height = p_height
 		distance_to_center = p_distance
+		kind = p_kind
 
 
 ## Um quarteirão: onde fica e o que contém.
@@ -109,15 +117,22 @@ static func _kind_for(row: int, column: int, blocks_per_side: int,
 	var distance := absf(row - half) + absf(column - half)
 	var max_distance := maxf(1.0, half * 2.0)
 	var centrality := 1.0 - distance / max_distance
-
 	# Dois parques em cantos opostos: dão referência visual e variedade.
 	var corner_a := row == 0 and column == blocks_per_side - 1
 	var corner_b := row == blocks_per_side - 1 and column == 0
 	if corner_a or corner_b:
 		return BlockKind.PARK
+	# Parque central completo (estilo cidade pequena): um quadrado 2x2 no miolo,
+	# deslocado para um lado. É o pulmão da cidade e a maior referência visual.
+	var mid := int(half)
+	if row in [mid - 1, mid] and column in [mid - 2, mid - 1]:
+		return BlockKind.PARK
 	# Uma praça perto do centro.
 	if centrality > 0.7 and rng.randf() < 0.25:
 		return BlockKind.PLAZA
+	# Hotéis: na borda do miolo, onde há movimento e vista.
+	if centrality > 0.3 and centrality <= 0.55 and rng.randf() < 0.45:
+		return BlockKind.HOTEL
 	# Miolo: arranha-céus.
 	if centrality > 0.45:
 		return BlockKind.TOWER
@@ -170,7 +185,7 @@ static func _lots_in_block(block: Block, rng: RandomNumberGenerator) -> Array[Lo
 
 			var height := _height_for(block.kind, rng)
 			var distance := Vector2(position.x, position.z).length()
-			lots.append(Lot.new(Vector3(position.x, 0.0, position.z), size, height, distance))
+			lots.append(Lot.new(Vector3(position.x, 0.0, position.z), size, height, distance, block.kind))
 	return lots
 
 

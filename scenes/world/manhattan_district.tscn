@@ -4,5 +4,5 @@
 
 [node name="ManhattanDistrict" type="Node3D"]
 script = ExtResource("1_manager")
-blocks_per_side = 5
+blocks_per_side = 7
 layout_seed = 20261103

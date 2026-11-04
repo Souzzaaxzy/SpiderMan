@@ -15,6 +15,12 @@ const TRUNK_COLOR := Color(0.28, 0.2, 0.14)
 const LEAF_COLOR_A := Color(0.2, 0.42, 0.18)
 const LEAF_COLOR_B := Color(0.28, 0.5, 0.22)
 const WATER_COLOR := Color(0.16, 0.3, 0.45)
+const BENCH_COLOR := Color(0.35, 0.24, 0.16)
+const BANDSTAND_COLOR := Color(0.78, 0.74, 0.66)
+const BANDSTAND_ROOF_COLOR := Color(0.45, 0.22, 0.2)
+const FLOWER_COLORS := [
+        Color(0.85, 0.35, 0.4), Color(0.9, 0.75, 0.3), Color(0.75, 0.45, 0.85),
+]
 
 ## Árvores por parque.
 @export var trees_per_park: int = 34
@@ -34,6 +40,10 @@ func build(blocks_per_side: int) -> Dictionary:
 	var grass_transforms: Array[Transform3D] = []
 	var path_transforms: Array[Transform3D] = []
 	var water_transforms: Array[Transform3D] = []
+	var bench_transforms: Array[Transform3D] = []
+	var flower_transforms: Array[Transform3D] = []
+	var bandstand_transforms: Array[Transform3D] = []
+	var roof_transforms: Array[Transform3D] = []
 
 	var block_half := CityLayout.BLOCK_SIZE * 0.5
 	for park: Vector3 in parks:
@@ -72,12 +82,45 @@ func build(blocks_per_side: int) -> Dictionary:
 				Basis().scaled(Vector3(leaf_radius * 2.0, leaf_radius * 1.6, leaf_radius * 2.0)),
 				base + Vector3(0.0, trunk_height + leaf_radius * 0.6, 0.0)))
 
+		# Bancos ao longo dos caminhos.
+		for _bench in 6:
+			var bench_axis := rng.randi() % 2
+			var bench_pos := (Vector3(0.0, 0.0, rng.randf_range(-block_half + 6.0, block_half - 6.0))
+				if bench_axis == 0
+				else Vector3(rng.randf_range(-block_half + 6.0, block_half - 6.0), 0.0, 0.0))
+			var bench_rot := 0.0 if bench_axis == 0 else PI * 0.5
+			bench_transforms.append(Transform3D(
+				Basis(Vector3.UP, bench_rot).scaled(Vector3(1.8, 0.5, 0.6)),
+				park + bench_pos + Vector3(0.0, 0.45, 0.0)))
+		# Canteiros de flores coloridas.
+		for _flower in 10:
+			var flower_pos := Vector3(
+				rng.randf_range(-block_half + 3.0, block_half - 3.0), 0.0,
+				rng.randf_range(-block_half + 3.0, block_half - 3.0))
+			if absf(flower_pos.x) < 4.0 or absf(flower_pos.z) < 4.0:
+				continue
+			flower_transforms.append(Transform3D(
+				Basis().scaled(Vector3(1.6, 0.5, 1.6)),
+				park + flower_pos + Vector3(0.0, 0.25, 0.0)))
+		# Coreto (bandstand) no meio do parque: um palco com telhado.
+		bandstand_transforms.append(Transform3D(
+			Basis().scaled(Vector3(4.5, 1.0, 4.5)),
+			park + Vector3(0.0, 0.5, 0.0)))
+		roof_transforms.append(Transform3D(
+			Basis().scaled(Vector3(6.0, 0.6, 6.0)),
+			park + Vector3(0.0, 3.4, 0.0)))
+
 	_add_multimesh("Grass", _unit_box(), GRASS_COLOR, grass_transforms)
 	_add_multimesh("Paths", _unit_box(), PATH_COLOR, path_transforms)
 	_add_multimesh("Water", _unit_box(), WATER_COLOR, water_transforms)
 	_add_multimesh("TreeTrunks", _unit_box(), TRUNK_COLOR, trunk_transforms)
 	# Copa com leve variação de cor, em duas pilhas, para não ficar uniforme.
 	_add_multimesh("TreeLeavesA", _unit_sphere(), LEAF_COLOR_A, leaf_transforms)
+	_add_multimesh("Benches", _unit_box(), BENCH_COLOR, bench_transforms)
+	_add_multimesh("Flowers", _unit_sphere(), FLOWER_COLORS[0], flower_transforms)
+	_add_multimesh("Bandstands", _unit_box(), BANDSTAND_COLOR, bandstand_transforms)
+	_stats["benches"] = bench_transforms.size()
+	_add_multimesh("BandstandRoofs", _unit_box(), BANDSTAND_ROOF_COLOR, roof_transforms)
 	_stats["parks"] = parks.size()
 	_stats["trees"] = trunk_transforms.size()
 	return _stats

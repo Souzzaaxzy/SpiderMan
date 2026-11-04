@@ -19,6 +19,11 @@ const PARAPET_THICKNESS := 0.45
 const WATER_TOWER_COLOR := Color(0.42, 0.34, 0.28)
 const AC_COLOR := Color(0.5, 0.52, 0.55)
 const ANTENNA_COLOR := Color(0.3, 0.32, 0.36)
+const HOTEL_BAND_COLOR := Color(0.62, 0.6, 0.58)
+const HOTEL_SIGN_COLOR := Color(0.95, 0.82, 0.35)
+## Faixas de varanda nos hotéis: espaçamento vertical e espessura.
+const HOTEL_BAND_SPACING := 4.2
+const HOTEL_BAND_THICKNESS := 0.28
 
 var _facade_material: ShaderMaterial
 var _stats: Dictionary = {}
@@ -127,6 +132,8 @@ func _add_details(lots: Array) -> void:
 	var water_positions: Array[Transform3D] = []
 	var ac_positions: Array[Transform3D] = []
 	var antenna_positions: Array[Transform3D] = []
+	var hotel_bands: Array[Transform3D] = []
+	var hotel_signs: Array[Transform3D] = []
 
 	for lot: CityLayout.Lot in lots:
 		var top := lot.height + 0.3
@@ -150,12 +157,28 @@ func _add_details(lots: Array) -> void:
 			var mast_size := Vector3(0.18, 6.0, 0.18)
 			antenna_positions.append(Transform3D(
 				Basis().scaled(mast_size), lot.center + Vector3(0.0, top + 3.0, 0.0)))
+		# Hotéis: faixas de varanda em toda a altura + letreiro no topo.
+		if lot.kind == CityLayout.BlockKind.HOTEL:
+			var floors := int(lot.height / HOTEL_BAND_SPACING)
+			for floor in range(1, floors):
+				var band_y := floor * HOTEL_BAND_SPACING
+				var band := Vector3(lot.size.x + 0.7, HOTEL_BAND_THICKNESS, lot.size.y + 0.7)
+				hotel_bands.append(Transform3D(
+					Basis().scaled(band), lot.center + Vector3(0.0, band_y, 0.0)))
+			var sign_size := Vector3(lot.size.x * 0.7, 2.4, 0.4)
+			hotel_signs.append(Transform3D(
+				Basis().scaled(sign_size),
+				lot.center + Vector3(0.0, top + 1.5, -lot.size.y * 0.5 - 0.4)))
 
 	_add_multimesh("WaterTowers", _unit_box(), WATER_TOWER_COLOR, water_positions)
 	_add_multimesh("AirConditioners", _unit_box(), AC_COLOR, ac_positions)
 	_add_multimesh("Antennas", _unit_box(), ANTENNA_COLOR, antenna_positions)
+	_add_multimesh("HotelBands", _unit_box(), HOTEL_BAND_COLOR, hotel_bands)
+	_add_multimesh("HotelSigns", _unit_box(), HOTEL_SIGN_COLOR, hotel_signs)
 	_stats["water_towers"] = water_positions.size()
 	_stats["air_conditioners"] = ac_positions.size()
+	_stats["hotel_bands"] = hotel_bands.size()
+	_stats["hotels"] = hotel_signs.size()
 	_stats["antennas"] = antenna_positions.size()
 
 

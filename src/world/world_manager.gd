@@ -1,29 +1,34 @@
 class_name WorldManager
 extends Node3D
-## Gerencia o distrito: ambiente, luz e organização espacial.
+## Gerencia o distrito: ambiente, luz, clima e organização espacial.
 ##
 ## A cena `manhattan_district.tscn` é o ponto de entrada; este script cuida do
 ## ambiente e mantém o distrito organizado em um nó próprio, para permitir trocar
 ## ou recarregar a região sem mexer no resto da cena.
 
-## Quarteirões por lado do primeiro distrito.
-@export var blocks_per_side: int = 5
+## Quarteirões por lado do distrito. 7x7 = 49 quarteirões: uma cidade maior, mais
+## viva e com mais referências visuais, ainda dentro do orçamento de um aparelho
+## modesto (toda a geometria sai em MultiMesh).
+@export var blocks_per_side: int = 7
 @export var layout_seed: int = 20261103
 
 var _city: CityGenerator
 var _sun: DirectionalLight3D
+var _environment: Environment
+var _climate: WorldClimate
 
 
 func _ready() -> void:
 	_setup_environment()
 	_setup_sun()
+	_setup_climate()
 	_build_city()
 
 
-## Ambiente urbano: céu limpo de fim de tarde, névoa leve para dar profundidade
-## sem custo. Sem ciclo de dia/noite ainda — só a base para recebê-lo depois.
+## Ambiente urbano: céu procedural, névoa leve para dar profundidade sem custo e
+## **ciclo de dia/noite** controlado pelo `WorldClimate`.
 func _setup_environment() -> void:
-	var environment := Environment.new()
+	_environment = Environment.new()
 	var sky := Sky.new()
 	var sky_material := ProceduralSkyMaterial.new()
 	sky_material.sky_top_color = Color(0.28, 0.42, 0.68)
@@ -31,26 +36,26 @@ func _setup_environment() -> void:
 	sky_material.ground_bottom_color = Color(0.16, 0.16, 0.18)
 	sky_material.ground_horizon_color = Color(0.42, 0.42, 0.44)
 	sky.sky_material = sky_material
-	environment.sky = sky
-	environment.background_mode = Environment.BG_SKY
+	_environment.sky = sky
+	_environment.background_mode = Environment.BG_SKY
 
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_energy = 0.9
+	_environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	_environment.ambient_light_energy = 0.9
 	# Névoa: esconde o limite do distrito e dá leitura de distância, o que ajuda
 	# bastante o desempenho em aparelho modesto.
-	environment.fog_enabled = true
-	environment.fog_light_color = Color(0.62, 0.66, 0.72)
-	environment.fog_density = 0.0035
-	environment.fog_sky_affect = 0.4
+	_environment.fog_enabled = true
+	_environment.fog_light_color = Color(0.62, 0.66, 0.72)
+	_environment.fog_density = 0.0035
+	_environment.fog_sky_affect = 0.4
 
 	var world_environment := WorldEnvironment.new()
 	world_environment.name = "WorldEnvironment"
-	world_environment.environment = environment
+	world_environment.environment = _environment
 	add_child(world_environment)
 
 
 ## Luz solar com sombras dimensionadas para Mobile: alcance curto e resolução
-## baixa. Sombras longas e nítidas custariam caro no Galaxy A14.
+## baixa. Sombras longas e nítidas custariam caro em aparelho modesto.
 func _setup_sun() -> void:
 	_sun = DirectionalLight3D.new()
 	_sun.name = "Sun"
@@ -64,6 +69,14 @@ func _setup_sun() -> void:
 	_sun.shadow_bias = 0.08
 	_sun.shadow_normal_bias = 1.5
 	add_child(_sun)
+
+
+## Ciclo de dia/noite e clima. Recebe o sol e o ambiente já montados.
+func _setup_climate() -> void:
+	_climate = WorldClimate.new()
+	_climate.name = "Climate"
+	add_child(_climate)
+	_climate.setup(_sun, _environment)
 
 
 func _build_city() -> void:
@@ -80,6 +93,11 @@ func _build_city() -> void:
 
 func city() -> CityGenerator:
 	return _city
+
+
+## O controlador de dia/noite e clima, para o teste e para a HUD.
+func climate() -> WorldClimate:
+	return _climate
 
 
 func spawn_position() -> Vector3:
