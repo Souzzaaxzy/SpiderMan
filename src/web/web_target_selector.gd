@@ -56,22 +56,41 @@ extends Node3D
 @export var scan_pitch_low: float = -10.0
 @export var scan_pitch_high: float = 60.0
 
+@export_group("Banda de altitude")
+## Altura-alvo da âncora acima da RUA (não do jogador), em metros. É o truque
+## central do balanço encadeado: prender dentro de uma banda em vez de "no mais
+## alto" faz o próximo arco DESCER e voltar ao cânion, em vez de escalar o
+## skyline para sempre.
+@export var band_base: float = 30.0
+@export var band_per_speed: float = 0.25
+@export var band_min: float = 30.0
+@export var band_max: float = 42.0
+## A partir desta folga acima da banda, o jogador é considerado "alto" e a banda
+## é afrouxada (o arco pode ser mais raso).
+@export var high_margin: float = 4.0
+
+@export_group("Anti-raspão")
+## Distância mínima à frente da face: se o jogador estiver a menos disto da
+## parede em que a âncora está, a face é rejeitada. Evita o balanço que raspa na
+## própria parede em que o jogador está colado.
+@export var face_min_front: float = 1.5
+## Folga mínima dos pés acima do piso no fundo do arco, em metros.
+@export var arc_clearance: float = 2.6
+
 @export_group("Pontuação")
 ## Peso da CONTINUIDADE: a âncora está à frente do movimento? É o critério que
 ## faz o balanço render deslocamento em vez de puxar o jogador para trás.
 @export var continuity_weight: float = 1.5
 ## Âncora à frente e longe.
 @export var ahead_weight: float = 1.0
-## Peso da ALTURA: a teia sobe para o alto do prédio, não para a parede ao lado.
-@export var high_weight: float = 4.0
+## Peso da distância à banda de altitude. Alto: é o critério que organiza o
+## balanço em cadeia.
+@export var band_weight: float = 2.0
 ## Ganho de altura: o arco passa por baixo e sobe do outro lado?
 @export var gain_weight: float = 0.5
 ## Faixa de comprimento ideal.
 @export var length_weight: float = 0.5
-## Altura relativa na faixa.
-@export var height_weight: float = 0.3
-## Peso da proximidade. Baixo: a teia não deve grudar no ponto mais perto, e sim
-## subir. A proximidade só desempata entre pontos igualmente altos.
+## Peso da proximidade. Baixo: só desempata.
 @export var proximity_weight: float = 0.2
 ## Peso da câmera. Baixo de propósito: só desempata.
 @export var camera_weight: float = 0.12
@@ -93,13 +112,9 @@ func _ready() -> void:
 	_sight_query.collide_with_bodies = true
 
 
-## Procura o melhor ponto de ancoragem.
-##
-## `move_direction` é para onde o jogador está indo (ou quer ir). `camera` só
-## influencia levemente. Devolve `{valid, position, score, reason, candidates}`.
-##
 func select_target(player_position: Vector3, velocity: Vector3,
-		move_direction: Vector3, camera: Camera3D, exclude: Array[RID]) -> Dictionary:
+		move_direction: Vector3, camera: Camera3D, exclude: Array[RID],
+		floor_height: float = 0.0) -> Dictionary:
 	var forward := _resolve_forward(velocity, move_direction, camera)
 	var eye := player_position + Vector3(0.0, eye_height, 0.0)
 	var camera_forward := Vector3.ZERO
@@ -107,7 +122,7 @@ func select_target(player_position: Vector3, velocity: Vector3,
 		camera_forward = -camera.global_transform.basis.z
 
 	_candidates.clear()
-	_scan(player_position, eye, forward, exclude)
+	_scan(player_position, eye, forward, exclude, floor_height)
 
 	if _candidates.is_empty():
 		return _invalid("sem candidatos")
@@ -117,17 +132,16 @@ func select_target(player_position: Vector3, velocity: Vector3,
 	# considera todas para o disparo nunca falhar.
 	var ahead_only: Array[Dictionary] = []
 	for candidate: Dictionary in _candidates:
-		var to_anchor: Vector3 = candidate["position"] - player_position
-		var flat := Vector3(to_anchor.x, 0.0, to_anchor.z)
-		if flat.length() > 0.01 and forward.dot(flat.normalized()) > 0.0:
+		if candidate["ahead"]:
 			ahead_only.append(candidate)
 	var pool: Array[Dictionary] = ahead_only if not ahead_only.is_empty() else _candidates
-	# Entre as ancoras a frente, escolhe a MAIS ALTA: a teia sobe para o alto do
-	# predio, nao para o ponto baixo da parede ao lado.
+
+	# Pontua e escolhe a melhor. A pontuacao premia ficar DENTRO da banda de
+	# altitude acima da rua: e o que faz o balanco encadear em vez de subir.
 	var best: Dictionary = {}
 	var best_score := -INF
 	for candidate: Dictionary in pool:
-		var score := _score(candidate, player_position, velocity, forward, camera_forward)
+		var score := _score(candidate, player_position, velocity, forward, camera_forward, floor_height)
 		candidate["score"] = score
 		if score > best_score:
 			best_score = score
@@ -145,8 +159,8 @@ func select_target(player_position: Vector3, velocity: Vector3,
 	}
 
 
-## Direção de referência da varredura. Prioriza o movimento; se o jogador está
-## parado, usa a direção em que ele olha (ou a da câmera).
+## Direcao de referencia da varredura. Prioriza o movimento; se o jogador esta
+## parado, usa a direcao em que ele olha (ou a da camera).
 func _resolve_forward(velocity: Vector3, move_direction: Vector3,
 		camera: Camera3D) -> Vector3:
 	var flat := Vector3(velocity.x, 0.0, velocity.z)
@@ -162,9 +176,9 @@ func _resolve_forward(velocity: Vector3, move_direction: Vector3,
 	return Vector3.FORWARD
 
 
-## Varre um leque de direções e guarda os pontos válidos.
+## Varre um leque de direcoes e guarda os pontos validos.
 func _scan(player_position: Vector3, eye: Vector3, forward: Vector3,
-		exclude: Array[RID]) -> void:
+		exclude: Array[RID], floor_height: float) -> void:
 	var base_yaw := atan2(forward.x, forward.z)
 	for yaw_step in scan_yaw_steps:
 		var yaw_t := 0.5 if scan_yaw_steps <= 1 else float(yaw_step) / float(scan_yaw_steps - 1)
@@ -173,7 +187,7 @@ func _scan(player_position: Vector3, eye: Vector3, forward: Vector3,
 			var pitch_t := 0.5 if scan_pitch_steps <= 1 else float(pitch_step) / float(scan_pitch_steps - 1)
 			var pitch := deg_to_rad(lerpf(scan_pitch_low, scan_pitch_high, pitch_t))
 			var dir := _direction_from(yaw, pitch)
-			var candidate := _probe(player_position, eye, dir, exclude)
+			var candidate := _probe(player_position, eye, dir, exclude, forward, floor_height)
 			if not candidate.is_empty():
 				_candidates.append(candidate)
 
@@ -183,9 +197,9 @@ func _direction_from(yaw: float, pitch: float) -> Vector3:
 	return (horizontal * cos(pitch) + Vector3.UP * sin(pitch)).normalized()
 
 
-## Lança um raio e valida o que ele encontrar.
+## Lanca um raio e valida o que ele encontrar.
 func _probe(player_position: Vector3, eye: Vector3, direction: Vector3,
-		exclude: Array[RID]) -> Dictionary:
+		exclude: Array[RID], forward: Vector3, floor_height: float) -> Dictionary:
 	_ray_query.from = eye
 	_ray_query.to = eye + direction * max_distance
 	_ray_query.exclude = exclude
@@ -208,49 +222,72 @@ func _probe(player_position: Vector3, eye: Vector3, direction: Vector3,
 	if not has_line_of_sight(eye, point, exclude):
 		return {}
 
+	# ANTI-RASPAO: o jogador precisa estar bem A FRENTE da face em que a ancora
+	# esta. Colado na parede, o balanco raspava nela ("bate de cara no predio").
+	# `front` e a distancia COM SINAL do jogador a face: positiva = a frente dela.
+	var flat_normal := Vector3(normal.x, 0.0, normal.z)
+	if flat_normal.length() > 0.01:
+		flat_normal = flat_normal.normalized()
+		var front := player_position - point
+		front.y = 0.0
+		if front.dot(flat_normal) < face_min_front:
+			return {}
+
+	# FOLGA DO ARCO: se o fundo do arco (ancora.y - comprimento) ficaria abaixo do
+	# piso, NAO rejeitamos: o pivo de fisica sobe para o arco caber (ver
+	# `WebSwingController.fire`). Guardamos so o sinal, para a pontuacao preferir
+	# ancoras que ja cabem.
+	var arc_bottom := point.y - distance
+	var arc_fits := arc_bottom >= floor_height + arc_clearance
+
+	var to_anchor := point - player_position
+	var flat_to_anchor := Vector3(to_anchor.x, 0.0, to_anchor.z)
+	var ahead := flat_to_anchor.length() > 0.01 and forward.dot(flat_to_anchor.normalized()) > 0.0
+
 	return {
 		"position": point,
 		"normal": normal,
 		"distance": distance,
 		"rise": rise,
 		"direction": direction,
+		"ahead": ahead,
+		"arc_fits": arc_fits,
 		"score": 0.0,
 	}
 
 
-## Pontua um candidato. Valores maiores são melhores.
+## Pontua um candidato. Valores maiores sao melhores.
 func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
-		forward: Vector3, camera_forward: Vector3) -> float:
+		forward: Vector3, camera_forward: Vector3, floor_height: float) -> float:
 	var point: Vector3 = candidate["position"]
 	var distance: float = candidate["distance"]
-	var rise: float = candidate["rise"]
-
-	# Continuidade: a ancoragem está à frente? O vetor da âncora, projetado na
-	# direção do movimento, precisa ser positivo — senão a teia puxaria o jogador
-	# para trás e mataria o impulso.
 	var to_anchor := point - player_position
 	var flat_to_anchor := Vector3(to_anchor.x, 0.0, to_anchor.z)
+
+	# Continuidade: a ancoragem esta a frente? O vetor da ancora, projetado na
+	# direcao do movimento, precisa ser positivo — senao a teia puxaria o jogador
+	# para tras e mataria o impulso.
 	var continuity := 0.0
 	if flat_to_anchor.length() > 0.01:
 		continuity = forward.dot(flat_to_anchor.normalized())
 
-	# Âncora à frente e alta. É o que evita o defeito de o jogador ser "puxado
-	# para o prédio": prender na face próxima faz o arco levar contra a parede,
-	# em vez de atravessar a rua. Preferimos o ponto que fica **além** do eixo do
-	# jogador e bem acima, para o arco passar por baixo e seguir em frente.
+	# Ancora a frente e longe.
 	var ahead := 0.0
 	if flat_to_anchor.length() > 0.01:
 		var along := flat_to_anchor.length()
 		var lateral := absf(forward.cross(flat_to_anchor.normalized()).y)
-		# Quanto mais alinhado com a frente e quanto mais longe, melhor.
 		ahead = clampf(along / maxf(ideal_length_max, 1.0), 0.0, 1.0) * (1.0 - lateral)
-	# Altura: o ponto precisa estar claramente acima para o arco render.
-	var high := clampf(rise / 25.0, 0.0, 1.0)
 
-	# Proximidade: 1.0 no ponto mais perto, 0.0 no mais distante. É o critério que
-	# faz a teia pegar sempre no lugar mais próximo do jogador.
-	var proximity := 1.0 - clampf(
-		(distance - min_distance) / maxf(max_distance - min_distance, 0.001), 0.0, 1.0)
+	# BANDA DE ALTITUDE: a ancora ideal fica ~30 a 42 m acima da RUA (nao "o mais
+	# alto possivel"). Prender dentro da banda faz o proximo arco descer de volta
+	# ao canion em vez de escalar o skyline para sempre.
+	var speed := Vector2(velocity.x, velocity.z).length()
+	var band_center := clampf(band_base + speed * band_per_speed, band_min, band_max)
+	var band_target := floor_height + band_center
+	var band_error := absf(point.y - band_target)
+	if player_position.y - floor_height > band_center + high_margin:
+		band_error = minf(band_error, absf(point.y - player_position.y - 4.0))
+	var band_score := clampf(1.0 - band_error / maxf(band_center, 1.0), 0.0, 1.0)
 
 	# Comprimento: 1.0 dentro da faixa ideal, caindo fora dela.
 	var length_score := 0.0
@@ -261,28 +298,32 @@ func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
 	else:
 		length_score = clampf(1.0 - (distance - ideal_length_max) / max_distance, 0.0, 1.0)
 
-	# Altura: preferimos o ponto que gera arco util, nem rasteiro nem pendurado.
-	var height_score := 1.0 - absf(rise - (ideal_length_min * 0.6)) / maxf(max_rise, 1.0)
-	height_score = clampf(height_score, 0.0, 1.0)
-
 	# Ganho de altura: o arco passa por baixo e permite subir do outro lado.
 	var gain := WebPhysics.potential_height_gain(
-		player_position, point, maxf(distance, WebPhysics.MIN_LENGTH))
+			player_position, point, maxf(distance, WebPhysics.MIN_LENGTH))
 	var gain_score := clampf(gain / 12.0, 0.0, 1.0)
 
-	# Câmera: só desempata. Se o jogador está olhando para a âncora, um bônus leve.
+	# Proximidade: so desempata.
+	var proximity := 1.0 - clampf(
+			(distance - min_distance) / maxf(max_distance - min_distance, 0.001), 0.0, 1.0)
+
+	# Camera: so desempata.
 	var camera_score := 0.0
 	if camera_forward.length() > 0.01 and to_anchor.length() > 0.01:
 		camera_score = maxf(0.0, camera_forward.dot(to_anchor.normalized()))
 
+	# Ancoras cujo arco nao caberia acima do piso perdem um pouco, mas continuam
+	# validas: o pivo de fisica sobe e resolve a folga no disparo.
+	var arc_penalty := 0.0 if candidate.get("arc_fits", true) else 1.5
+
 	return continuity * continuity_weight \
-		+ ahead * ahead_weight \
-		+ high * high_weight \
-		+ proximity * proximity_weight \
-		+ length_score * length_weight \
-		+ height_score * height_weight \
-		+ gain_score * gain_weight \
-		+ camera_score * camera_weight
+			+ ahead * ahead_weight \
+			+ band_score * band_weight \
+			+ length_score * length_weight \
+			+ gain_score * gain_weight \
+			+ proximity * proximity_weight \
+			+ camera_score * camera_weight \
+			- arc_penalty
 
 
 func has_line_of_sight(from: Vector3, to: Vector3, exclude: Array[RID]) -> bool:
@@ -299,4 +340,4 @@ func candidate_count() -> int:
 
 func _invalid(reason: String) -> Dictionary:
 	return {"valid": false, "position": Vector3.ZERO, "normal": Vector3.UP,
-		"score": 0.0, "reason": reason, "candidates": []}
+			"score": 0.0, "reason": reason, "candidates": []}

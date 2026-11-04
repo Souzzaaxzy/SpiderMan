@@ -289,6 +289,11 @@ func _try_start_climb(direction: Vector3, grounded: bool) -> void:
 	if normal.length() < 0.01:
 		return
 	normal = normal.normalized()
+	# Só agarra FACHADA LARGA: um leque 3x3 de raios ao longo da parede. Postes,
+	# troncos e quinas estreitas não contam como parede escalável (o jogador
+	# deslizaria em volta deles).
+	if not _wide_wall(normal):
+		return
 	_wall_normal = normal
 	_wall_state = WallState.CLIMBING
 	velocity = Vector3.ZERO
@@ -296,6 +301,37 @@ func _try_start_climb(direction: Vector3, grounded: bool) -> void:
 	# Encara a parede.
 	if _visual != null:
 		_visual.rotation.y = atan2(-normal.x, -normal.z)
+
+
+## A parede é larga o bastante para escalar?
+##
+## Um leque 3x3 de raios (alturas joelho/peito/cabeça × esquerda/meio/direita)
+## na direção da parede. Se pelo menos 5 dos 9 concordarem com a mesma normal,
+## é fachada; senão é poste, tronco ou quina.
+func _wide_wall(normal: Vector3) -> bool:
+	var world := get_world_3d()
+	if world == null:
+		return false
+	var tangent := Vector3(-normal.z, 0.0, normal.x)
+	var query := PhysicsRayQueryParameters3D.new()
+	query.exclude = [get_rid()]
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var agree := 0
+	for offset_y in [-0.45, 0.3, 0.95]:
+		for offset_l in [-0.38, 0.0, 0.38]:
+			var origin: Vector3 = global_position + Vector3(0.0, 1.0 + offset_y, 0.0) + tangent * offset_l
+			query.from = origin
+			query.to = origin - normal * (wall_check_distance + 0.4)
+			var hit := world.direct_space_state.intersect_ray(query)
+			if hit.is_empty():
+				continue
+			var hit_normal: Vector3 = hit["normal"]
+			if absf(hit_normal.y) > 0.5:
+				continue
+			if Vector3(hit_normal.x, 0.0, hit_normal.z).normalized().dot(normal) > 0.8:
+				agree += 1
+	return agree >= 5
 
 
 ## Normal da parede à frente (Vector3.ZERO se não houver).

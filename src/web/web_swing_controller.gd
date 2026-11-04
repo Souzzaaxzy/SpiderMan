@@ -89,6 +89,11 @@ const REEL_RATE := 7.0
 @export var swing_kick_up_gain: float = 0.30
 ## Teto do impulso vertical, em m/s.
 @export var swing_kick_up_max: float = 8.0
+## Bônus de "balanço completo": quanto do arco foi percorrido desde o disparo.
+## Quanto mais completo, mais empurrão para frente e para cima ao soltar — é o
+## que faz um balanço bem executado ganhar altura em vez de só deslizar.
+@export var full_swing_forward: float = 5.0
+@export var full_swing_up: float = 5.0
 
 @export_group("Afastamento da parede")
 ## A partir de que distância da parede o empurrão começa, em metros.
@@ -108,6 +113,9 @@ var _skeleton: Skeleton3D
 
 var _state: State = State.IDLE
 var _anchors: Array[Vector3] = []
+## Pivô de FÍSICA: o ponto em volta do qual a corda realmente gira. Pode ser
+## mais alto que a âncora visual, quando o arco não caberia acima do piso.
+var _pivot: Vector3 = Vector3.ZERO
 var _rope_lengths: Array[float] = []
 var _anchor_count: int = 0
 var _reel_input: float = 0.0
@@ -115,6 +123,9 @@ var _last_release_speed: float = 0.0
 var _floor_height: float = 0.0
 var _floor_query: PhysicsRayQueryParameters3D
 var _last_score: float = 0.0
+## Tempo desde prender a teia, e ângulo do arco no momento do disparo.
+var _swing_time: float = 0.0
+var _swing_angle_start: float = 0.0
 
 ## Alvo do Web Zip.
 var _zip_target: Vector3 = Vector3.ZERO
@@ -249,10 +260,21 @@ func _apply_swing_kick() -> void:
 	if gain <= 0.0 and up <= 0.0:
 		return
 	var direction := flat.normalized()
+
+	# Bônus de balanço completo: mede quanto do arco foi percorrido (do ângulo de
+	# disparo até o ângulo mais alto alcançado). Um arco quase completo dá mais
+	# empurrão para frente e para cima.
+	var completion := 0.0
+	var span := absf(_swing_angle_start)
+	if span > 0.15:
+		completion = clampf((_swing_angle() - _swing_angle_start) / (2.0 * span), 0.0, 1.0)
+	var extra_forward := full_swing_forward * completion
+	var extra_up := full_swing_up * completion
+
 	_controller.velocity = Vector3(
-		velocity.x + direction.x * gain,
-		velocity.y + up,
-		velocity.z + direction.z * gain)
+		velocity.x + direction.x * (gain + extra_forward),
+		velocity.y + up + extra_up,
+		velocity.z + direction.z * (gain + extra_forward))
 
 
 ## Dispara a teia para o melhor ponto disponível, sem exigir mira.
@@ -261,18 +283,43 @@ func fire() -> bool:
 		return false
 
 	var exclude: Array[RID] = [_controller.get_rid()]
+	_update_floor_reference()
 	var choice := _selector.select_target(
 		_controller.global_position, _controller.velocity, _desired_direction,
-		_camera, exclude)
+				_camera, exclude, _floor_height)
 	if not choice["valid"]:
 		return false
 
 	var anchor: Vector3 = choice["position"]
-	# O comprimento nasce **igual à distância**: prender a teia não move o
-	# jogador nem um milímetro. É o fim do tranco no disparo.
-	var length := WebPhysics.length_without_snap(body_position(), anchor, MIN_ROPE_LENGTH)
-	length = minf(length, MAX_ROPE_LENGTH)
-	length = WebPhysics.safe_length(anchor, length, _floor_height + SWING_CLEARANCE)
+	var pivot_body := body_position()
+
+	# --- Pivô de física ---
+	# A corda gira em volta de um pivô que fica no PLANO de deslocamento (remove o
+	# desvio lateral da âncora), para o arco não jogar o jogador de lado.
+	var forward := Vector3(_controller.velocity.x, 0.0, _controller.velocity.z)
+	if forward.length() < 1.0:
+		forward = Vector3(anchor.x - pivot_body.x, 0.0, anchor.z - pivot_body.z)
+	forward.y = 0.0
+	if forward.length() > 0.01:
+		forward = forward.normalized()
+	else:
+		forward = Vector3.FORWARD
+	var dx := anchor.x - pivot_body.x
+	var dz := anchor.z - pivot_body.z
+	var along := dx * forward.x + dz * forward.z
+	_pivot = Vector3(pivot_body.x + forward.x * along, anchor.y, pivot_body.z + forward.z * along)
+
+	# --- Folga do arco ---
+	# O fundo do arco (pivô.y - comprimento) precisa ficar `SWING_CLEARANCE` acima
+	# do piso. Se a corda for longa demais para isso, o pivô SOBE (arco mais alto e
+	# mais raso) em vez de a corda encurtar num tranco. É a técnica do Insomniac.
+	var clearance_bottom := _floor_height + SWING_CLEARANCE
+	var length := _pivot.distance_to(pivot_body)
+	if _pivot.y - length < clearance_bottom:
+		# Sobe o pivô o suficiente para o fundo do arco caber.
+		_pivot.y = clearance_bottom + length
+		length = _pivot.distance_to(pivot_body)
+	length = clampf(length, MIN_ROPE_LENGTH, MAX_ROPE_LENGTH)
 
 	_anchors = [anchor]
 	_rope_lengths = [length]
@@ -280,6 +327,21 @@ func fire() -> bool:
 	_state = State.SWINGING
 	_controller.swing_active = true
 	_last_score = choice.get("score", 0.0)
+	_swing_time = 0.0
+	_swing_angle_start = _swing_angle()
+
+	# --- Conservação de momento ao prender ---
+	# A velocidade é girada para a TANGENTE do arco mantendo o módulo: a velocidade
+	# do mergulho vira velocidade de balanço, sem tranco.
+	var radial := (_pivot - pivot_body)
+	if radial.length() > 0.01:
+		radial = radial.normalized()
+		var velocity := _controller.velocity
+		var speed := velocity.length()
+		var vr := velocity.dot(radial)
+		var tangent := velocity - radial * vr
+		if tangent.length() > 0.01 and speed > 0.5:
+			_controller.velocity = tangent.normalized() * speed
 
 	if _visual != null:
 		_visual.show_strand(hand_position(), anchor)
@@ -293,9 +355,10 @@ func zip() -> bool:
 		return false
 
 	var exclude: Array[RID] = [_controller.get_rid()]
+	_update_floor_reference()
 	var choice := _selector.select_target(
 		_controller.global_position, _controller.velocity, _desired_direction,
-		_camera, exclude)
+				_camera, exclude, _floor_height)
 	if not choice["valid"]:
 		return false
 
@@ -350,7 +413,15 @@ func last_score() -> float:
 func arc_lowest_point() -> float:
 	if _anchor_count == 0:
 		return _floor_height
-	return WebPhysics.arc_lowest_point(_anchors[0], _rope_lengths[0])
+	return WebPhysics.arc_lowest_point(_pivot, _rope_lengths[0])
+
+
+## Ângulo do corpo no arco, medido do pivô: 0 = embaixo, cresce ao subir.
+func _swing_angle() -> float:
+	if _anchor_count == 0:
+		return 0.0
+	var offset := body_position() - _pivot
+	return atan2(offset.y, Vector2(offset.x, offset.z).length())
 
 
 ## Direção desejada pelo jogador, usada na seleção de alvo.
@@ -362,7 +433,7 @@ func set_rope_length(value: float) -> void:
 	if _anchor_count == 0:
 		return
 	var new_length := clampf(value, MIN_ROPE_LENGTH, MAX_ROPE_LENGTH)
-	new_length = WebPhysics.safe_length(_anchors[0], new_length, _floor_height + MIN_ARC_HEIGHT)
+	new_length = WebPhysics.safe_length(_pivot, new_length, _floor_height + SWING_CLEARANCE)
 	var old_length := _rope_lengths[0]
 	if is_equal_approx(old_length, new_length):
 		return
@@ -405,26 +476,25 @@ func _step_swing_velocity(delta: float) -> bool:
 		return false
 
 	_update_floor_reference()
-	# Mantem o arco inteiro acima do piso: se a corda for longa demais para o
-	# fundo do arco caber acima do chao, ela encurta sozinha (suave, nao num
-	# tranco). E o truque que o Insomniac usa para o jogador nao raspar no chao.
-	var clearance := _floor_height + SWING_CLEARANCE
-	var allowed := _anchors[0].y - clearance
-	if allowed > MIN_ROPE_LENGTH and _rope_lengths[0] > allowed:
-		_rope_lengths[0] = maxf(allowed, _rope_lengths[0] - CLEARANCE_PULL_RATE * delta)
+	_swing_time += delta
 	if _reel_input != 0.0:
 		set_rope_length(_rope_lengths[0] - _reel_input * REEL_RATE * delta)
 
 	var pivot := body_position()
 	var velocity := _controller.velocity
+	# A restrição gira em volta do PIVÔ DE FÍSICA (que pode estar acima da âncora
+	# visual, quando o arco precisa caber acima do piso).
 	for index in _anchor_count:
 		var result := WebPhysics.constrain_velocity(
-			velocity, pivot, _anchors[index], _rope_lengths[index], ROPE_SLACK)
+			velocity, pivot, _pivot, _rope_lengths[index], ROPE_SLACK)
 		velocity = result[0]
 
-	# Empurrão para fora da parede: mantém o balanço longe da fachada, em vez de
-	# raspar nela. O raio procura a parede à frente e, se estiver perto, soma uma
-	# velocidade na direção da normal (para fora).
+	# Desvio de fachada ANTECIPADO: um raio à frente do movimento; se achar parede,
+	# gira a direção para a tangente dela antes do contato. É preventivo, não
+	# reativo — o que evita o "bate de cara no prédio".
+	velocity = _steer_away_from_facade(velocity, delta)
+
+	# Empurrão para fora da parede: reforço quando já está perto.
 	velocity = _push_away_from_wall(velocity, delta)
 
 	# Assistencia de piso: se o corpo está chegando perto do chao, soma um pouco de
@@ -436,6 +506,56 @@ func _step_swing_velocity(delta: float) -> bool:
 
 	_controller.velocity = WebPhysics.clamp_speed(velocity)
 	return true
+
+
+## Desvia a direção do balanço ANTES de bater na fachada.
+##
+## Lança um raio à frente (na direção do movimento, até ~34 m) e, se achar parede,
+## gira a velocidade para a tangente dela, com urgência proporcional à distância.
+## Assim o jogador contorna o prédio em vez de se chocar com ele.
+func _steer_away_from_facade(velocity: Vector3, delta: float) -> Vector3:
+	if _controller == null:
+		return velocity
+	var flat := Vector3(velocity.x, 0.0, velocity.z)
+	var speed := flat.length()
+	if speed < 6.0:
+		return velocity
+	var world := _controller.get_world_3d()
+	if world == null:
+		return velocity
+	var heading := flat / speed
+	var look := clampf(speed * 0.9, 8.0, 34.0)
+	var from := body_position()
+	var query := PhysicsRayQueryParameters3D.new()
+	query.from = from
+	query.to = from + heading * look
+	query.exclude = [_controller.get_rid()]
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var hit := world.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return velocity
+	var normal: Vector3 = hit["normal"]
+	if absf(normal.y) > 0.5:
+		return velocity
+	var flat_normal := Vector3(normal.x, 0.0, normal.z)
+	if flat_normal.length() < 0.01:
+		return velocity
+	flat_normal = flat_normal.normalized()
+	var into := -(heading.x * flat_normal.x + heading.z * flat_normal.z)
+	if into < 0.25:
+		return velocity
+	# Tangente da parede mais próxima da direção atual.
+	var tangent := Vector3(-flat_normal.z, 0.0, flat_normal.x)
+	if heading.dot(tangent) < 0.0:
+		tangent = -tangent
+	var urgency := clampf(1.0 - hit["position"].distance_to(from) / look, 0.0, 1.0)
+	var target := (tangent + flat_normal * 0.3).normalized()
+	var turn := heading.slerp(target, clampf((0.6 + 2.2 * urgency) * into * delta * 6.0, 0.0, 1.0))
+	var new_flat := Vector3(turn.x, 0.0, turn.z).normalized() * speed
+	velocity.x = new_flat.x
+	velocity.z = new_flat.z
+	return velocity
 
 
 ## Afasta o jogador da parede à frente durante o balanço.
@@ -458,7 +578,7 @@ func _push_away_from_wall(velocity: Vector3, delta: float) -> Vector3:
 	var flat := Vector3(velocity.x, 0.0, velocity.z)
 	if flat.length() > 0.5:
 		probes.append(flat.normalized())
-	var to_anchor := _anchors[0] - from
+	var to_anchor := _pivot - from
 	to_anchor.y = 0.0
 	if to_anchor.length() > 0.5:
 		probes.append(to_anchor.normalized())
