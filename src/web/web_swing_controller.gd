@@ -72,9 +72,26 @@ const REEL_RATE := 7.0
 ## Velocidade mínima para o impulso valer.
 @export var swing_kick_min_speed: float = 6.0
 ## Quanto da velocidade é somado como impulso horizontal.
-@export var swing_kick_gain: float = 0.45
-## Teto do impulso, em m/s.
-@export var swing_kick_max: float = 12.0
+@export var swing_kick_gain: float = 0.55
+## Teto do impulso horizontal, em m/s.
+@export var swing_kick_max: float = 14.0
+## Impulso **vertical base** ao soltar, em m/s. Dá o "salto" de soltura: mesmo
+## saindo do ponto baixo do arco (onde a queda é ~0), o jogador sobe. Pedido do
+## responsável: "vá mais para cima também".
+@export var swing_kick_up_base: float = 4.5
+## Quanto da queda vira impulso vertical extra, além da base.
+@export var swing_kick_up_gain: float = 0.30
+## Teto do impulso vertical, em m/s.
+@export var swing_kick_up_max: float = 8.0
+
+@export_group("Afastamento da parede")
+## A partir de que distância da parede o empurrão começa, em metros.
+@export var wall_push_distance: float = 4.5
+## Força do empurrão para fora da parede, em m/s². É o que mantém o personagem
+## balançando **longe** da fachada em vez de raspando nela.
+@export var wall_push_strength: float = 12.0
+## Alcance do raio que procura a parede à frente, em metros.
+@export var wall_probe_distance: float = 6.0
 
 var _controller: CharacterBody3D
 var _camera: Camera3D
@@ -221,12 +238,14 @@ func _apply_swing_kick() -> void:
 	# O impulso vem da queda: quanto mais rápido vinha descendo, maior o ganho.
 	var falling := maxf(0.0, -velocity.y)
 	var gain := minf(falling * swing_kick_gain, swing_kick_max)
-	if gain <= 0.0:
+	# Impulso vertical: base fixa (o "salto" de soltura) + o que a queda acrescenta.
+	var up := minf(swing_kick_up_base + falling * swing_kick_up_gain, swing_kick_up_max)
+	if gain <= 0.0 and up <= 0.0:
 		return
 	var direction := flat.normalized()
 	_controller.velocity = Vector3(
 		velocity.x + direction.x * gain,
-		velocity.y,
+		velocity.y + up,
 		velocity.z + direction.z * gain)
 
 
@@ -268,9 +287,11 @@ func zip() -> bool:
 		return false
 
 	var exclude: Array[RID] = [_controller.get_rid()]
+	# No zip NAO queremos o ponto mais proximo: o objetivo e puxar o jogador para
+	# longe. `prefer_nearest = false` libera o alvo alto e distante.
 	var choice := _selector.select_target(
 		_controller.global_position, _controller.velocity, _desired_direction,
-		_camera, exclude)
+		_camera, exclude, false)
 	if not choice["valid"]:
 		return false
 
@@ -390,8 +411,56 @@ func _step_swing_velocity(delta: float) -> bool:
 			velocity, pivot, _anchors[index], _rope_lengths[index], ROPE_SLACK)
 		velocity = result[0]
 
+	# Empurrão para fora da parede: mantém o balanço longe da fachada, em vez de
+	# raspar nela. O raio procura a parede à frente e, se estiver perto, soma uma
+	# velocidade na direção da normal (para fora).
+	velocity = _push_away_from_wall(velocity, delta)
+
 	_controller.velocity = WebPhysics.clamp_speed(velocity)
 	return true
+
+
+## Afasta o jogador da parede à frente durante o balanço.
+##
+## Sem isto, o arco tende a raspar a fachada do prédio em que a teia está presa —
+## o jogador pediu para "ficar mais distante da parede". O raio sai do corpo na
+## direção do movimento horizontal; se achar parede dentro de `wall_push_distance`,
+## aplica uma aceleração na direção da normal da parede (para fora).
+func _push_away_from_wall(velocity: Vector3, delta: float) -> Vector3:
+	if _controller == null:
+		return velocity
+	var flat := Vector3(velocity.x, 0.0, velocity.z)
+	if flat.length() < 0.5:
+		return velocity
+	var world := _controller.get_world_3d()
+	if world == null:
+		return velocity
+	var direction := flat.normalized()
+	var from := body_position()
+	var query := PhysicsRayQueryParameters3D.new()
+	query.from = from
+	query.to = from + direction * wall_probe_distance
+	query.exclude = [_controller.get_rid()]
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var hit := world.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return velocity
+	var normal: Vector3 = hit["normal"]
+	# Só a componente horizontal da normal interessa: queremos afastar da parede,
+	# não empurrar para cima ou para baixo.
+	var flat_normal := Vector3(normal.x, 0.0, normal.z)
+	if flat_normal.length() < 0.01:
+		return velocity
+	flat_normal = flat_normal.normalized()
+	var distance: float = from.distance_to(hit["position"])
+	var strength := wall_push_strength * clampf(
+		1.0 - distance / maxf(wall_push_distance, 0.001), 0.0, 1.0)
+	# Só empurra se ainda não estiver se afastando o bastante.
+	var outward := velocity.dot(flat_normal)
+	if outward < strength:
+		velocity += flat_normal * (strength - outward) * delta * 4.0
+	return velocity
 
 
 ## Corrige a posição **depois** do move_and_slide, de forma limitada.

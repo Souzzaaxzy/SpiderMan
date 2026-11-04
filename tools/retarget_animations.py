@@ -38,6 +38,14 @@ import sys
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
+# O export do Blender grava `rotation_quaternion` quadro a quadro e pode gravar
+# `q` num quadro e `-q` no seguinte (mesma rotação, sinal oposto). A Godot importa
+# isso como track de valor bruto, sem corrigir a continuidade, e o osso gira o
+# caminho longo — o corpo "treme". O helper abaixo corrige o .glb depois de
+# exportar; ver `tools/fix_glb_quaternions.py`.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fix_glb_quaternions import fix_quaternions
+
 FPS = 24
 KEEP_OBJECTS = ("rig", "Body", "Frames", "Logos", "Webs")
 
@@ -488,6 +496,10 @@ def main(argv: list[str]) -> int:
         export_image_format="AUTO",
     )
     print("exportado: %s (%.1f MB)" % (output_path, os.path.getsize(output_path) / 1048576))
+    # Corrige a continuidade dos quaternions, que o export do Blender quebra.
+    fixed = fix_quaternions(output_path)
+    if fixed:
+        print("quaternions: %d trocas de sinal corrigidas" % fixed)
     return 0
 
 

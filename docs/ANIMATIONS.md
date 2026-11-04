@@ -53,12 +53,43 @@ percorre 1,79 m); a missão pede animações *in-place*, porque quem move o
 personagem é a física. Só a oscilação vertical do quadril é preservada, que é o
 que dá peso ao passo.
 
+## Correção do "personagem tremendo" (nov/2026)
+
+Dois defeitos faziam o corpo parecer "bugado", e os dois foram medidos e
+corrigidos.
+
+### 1. Quaternions com sinal trocado
+
+O export do Blender grava `rotation_quaternion` quadro a quadro e pode gravar
+`q` num quadro e `-q` no seguinte — mesma rotação, sinal oposto. A Godot importa
+rotações de glTF como track de **valor bruto**, sem corrigir a continuidade, e o
+osso interpola pelo **caminho longo** (~180°). Resultado: o membro "pula" de um
+quadro para o outro.
+
+Medido no canal `forearm.r`: **4 trocas de sinal** no `jog`, 4 no `swing_loop`;
+**15.706 no total**, somando todos os clipes e canais.
+
+Correção: `tools/fix_glb_quaternions.py` percorre cada canal de rotação e troca o
+sinal quando `dot(anterior, atual) < 0`. Como `q` e `-q` são a mesma rotação,
+**nenhuma pose muda** — só o caminho da interpolação. O `retarget_animations.py`
+já chama o helper ao final do export.
+
+### 2. O ponto de "walk" sumia do BlendSpace
+
+O driver montava o BlendSpace passando o **nome do clipe** (`"walking"`) onde a
+função esperava o **estado** (`"walk"`). O ponto do meio era descartado em
+silêncio: o blend ficava só com `idle`/`jog`/`sprint`, e o andar virava uma
+mistura instável entre idle e jog.
+
+Medido: a mão direita dava saltos de **0,63 m por quadro** andando (a esquerda,
+0,08 m). Depois da correção: **0,08 m nas duas**, simétrico. Há um teste de
+regressão em `player_smoke_test.gd`.
+
 ## Cobertura dos estados
 
 ```
-[anim] estados com clipe proprio: 12 de 21
-[anim] 9 estados rodando em clipe alternativo
-[anim] nenhum estado ficou sem animacao (todos usam alternativa).
+[anim] estados com clipe proprio: 13 de 21
+[anim] 8 estados rodando em clipe alternativo
 ```
 
 | Estado | Situação |
@@ -67,12 +98,12 @@ que dá peso ao passo.
 | `jump_start`, `land`, `land_roll` | ✅ clipe próprio |
 | `swing_start`, `swing_loop`, `swing_release` | ✅ clipe próprio |
 | `wall_run` | ✅ clipe próprio |
-| `idle` | ⚠️ usa `walking` |
+| `idle` | ✅ clipe próprio (gerado da pose neutra) |
 | `jump_loop`, `fall`, `air_move` | ⚠️ usam `standing_jump` |
 | `web_shoot_l`, `web_shoot_r`, `web_zip` | ⚠️ usam `swing_start` |
 | `wall_climb`, `wall_jump` | ⚠️ usam `wall_run` / `standing_jump` |
 
-Os 9 em alternativa **funcionam** — não ficam parados — mas com o clipe errado.
+Os 8 em alternativa **funcionam** — não ficam parados — mas com o clipe errado.
 O console registra quais são a cada execução.
 
 ## O que ainda falta

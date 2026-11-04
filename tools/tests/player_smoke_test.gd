@@ -380,6 +380,25 @@ func _test_model(player: Node3D) -> void:
 		largest = maxf(largest, value)
 	_check("pe se move ao andar", largest - smallest > 0.05, "(%.3f m de amplitude)" % (largest - smallest))
 
+	# Regressao: o ponto de "walk" precisa existir no BlendSpace. Ele ja foi
+	# descartado em silencio (o driver passava o nome do clipe, "walking", em vez
+	# do estado, "walk"), e o andar virava uma mistura instavel entre idle e jog:
+	# medido, a mao direita pulava 0,63 m por quadro. Agora o salto fica < 0,20 m.
+	await _reset(player, LANE_FREE)
+	player.set_move_vector(Vector2(0, -1))
+	await _wait_physics(40)
+	var hand := skeleton.find_bone("hand.r")
+	var prev_pos := skeleton.get_bone_global_pose(hand).origin
+	var worst_jump := 0.0
+	for _step in 180:
+		await _wait_physics(1)
+		var pos := skeleton.get_bone_global_pose(hand).origin
+		worst_jump = maxf(worst_jump, pos.distance_to(prev_pos))
+		prev_pos = pos
+	player.set_move_vector(Vector2.ZERO)
+	_check("andar sem tranco de pose (mao direita)", worst_jump < 0.20,
+		"(maior salto/quadro = %.3f m)" % worst_jump)
+
 
 ## Posição Z das lentes da máscara no espaço do jogador. Fica negativo quando o
 ## modelo encara -Z (frente na Godot).

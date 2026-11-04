@@ -100,8 +100,12 @@ func _build_tree() -> void:
 	var locomotion := AnimationNodeBlendSpace1D.new()
 	locomotion.min_space = 0.0
 	locomotion.max_space = max_blend_speed
+	# `resolve` recebe o **estado**, nao o clipe: "walk", nao "walking". Passar o
+	# nome do clipe aqui fazia o ponto do meio ser silenciosamente descartado (o
+	# blend ficava so com idle/jog/sprint) e o andar virava uma mistura instavel
+	# entre idle e jog — o personagem "tremia" andando.
 	_add_blend_point(locomotion, "idle", 0.0)
-	_add_blend_point(locomotion, "walking", walk_speed_reference)
+	_add_blend_point(locomotion, "walk", walk_speed_reference)
 	_add_blend_point(locomotion, "jog", run_speed_reference)
 	_add_blend_point(locomotion, "sprint", max_blend_speed)
 	if locomotion.get_blend_point_count() == 0:
@@ -148,7 +152,10 @@ func _add_blend_point(space: AnimationNodeBlendSpace1D, state_name: String, posi
 	var clip := PlayerAnimationLibrary.resolve(state_name, _available)
 	if clip == &"":
 		return
-	space.add_blend_point(_single_clip(clip), position)
+	# Nome explícito: sem ele a Godot usa "índice seguro" como referência e avisa
+	# que nomes vazios serão removidos — e a interpolação entre os pontos fica
+	# instável, produzindo saltos de pose (medido: mão pulando 0,59 m por quadro).
+	space.add_blend_point(_single_clip(clip), position, -1, String(clip))
 
 
 func _single_clip(clip: StringName) -> AnimationNodeAnimation:

@@ -31,10 +31,11 @@ extends Node3D
 
 ## Distância máxima de ancoragem, em metros.
 @export var max_distance: float = 70.0
-## Distância mínima: mais perto que isto o arco não rende.
-@export var min_distance: float = 8.0
+## Distância mínima: mais perto que isto o arco não rende. 4 m: encostado na
+## parede ainda há pontos acima/ao lado dentro do alcance, então a teia pega.
+@export var min_distance: float = 4.0
 ## Altura mínima do ponto acima do jogador.
-@export var min_rise: float = 2.0
+@export var min_rise: float = 1.5
 ## Altura máxima do ponto acima do jogador. Acima disso o balanço vira pêndulo.
 @export var max_rise: float = 45.0
 ## Faixa de comprimento considerada ideal, em metros.
@@ -46,26 +47,35 @@ extends Node3D
 @export var eye_height: float = 1.2
 
 @export_group("Varredura")
-## Quantos raios na horizontal e na vertical. 5x3 = 15 candidatos, custo fixo.
-@export var scan_yaw_steps: int = 5
-@export var scan_pitch_steps: int = 3
-## Abertura da varredura, em graus, em torno da direção de movimento.
-@export var scan_yaw_spread: float = 75.0
-@export var scan_pitch_low: float = -5.0
-@export var scan_pitch_high: float = 45.0
+## Quantos raios na horizontal e na vertical. 9x5 = 45 candidatos, custo fixo.
+@export var scan_yaw_steps: int = 9
+@export var scan_pitch_steps: int = 5
+## Abertura da varredura, em graus, em torno da direção de movimento. 180° = volta
+## completa, para a teia achar parede mesmo atrás ou ao lado do jogador.
+@export var scan_yaw_spread: float = 180.0
+@export var scan_pitch_low: float = -10.0
+@export var scan_pitch_high: float = 60.0
 
 @export_group("Pontuação")
-@export var continuity_weight: float = 1.0
-## Peso da âncora "à frente e longe": é o que faz o balanço render deslocamento
-## em vez de puxar o jogador contra a parede.
-@export var ahead_weight: float = 1.1
+## Janela de distância em torno do candidato mais próximo. Só candidatos até
+## `mais_proximo * nearest_window_ratio` concorrem: garante que a teia pegue no
+## ponto mais próximo, deixando a forma (altura, continuidade) desempatar.
+@export var nearest_window_ratio: float = 1.15
+## Peso da proximidade. DOMINANTE de propósito: o jogador quer que a teia pegue
+## sempre no ponto mais próximo dele. Os outros termos só desempatam.
+@export var proximity_weight: float = 2.5
+## Continuidade: a âncora está à frente do movimento? Peso moderado, para não
+## contrariar a proximidade.
+@export var continuity_weight: float = 0.45
+## Âncora "à frente e longe". Peso baixo: a proximidade manda.
+@export var ahead_weight: float = 0.45
 ## Peso da altura do ponto.
-@export var high_weight: float = 0.7
-@export var length_weight: float = 0.8
-@export var height_weight: float = 0.6
-@export var gain_weight: float = 0.5
+@export var high_weight: float = 0.45
+@export var length_weight: float = 0.35
+@export var height_weight: float = 0.25
+@export var gain_weight: float = 0.15
 ## Peso da câmera. Baixo de propósito: só desempata.
-@export var camera_weight: float = 0.25
+@export var camera_weight: float = 0.12
 
 var _ray_query: PhysicsRayQueryParameters3D
 var _sight_query: PhysicsRayQueryParameters3D
@@ -88,8 +98,13 @@ func _ready() -> void:
 ##
 ## `move_direction` é para onde o jogador está indo (ou quer ir). `camera` só
 ## influencia levemente. Devolve `{valid, position, score, reason, candidates}`.
+##
+## `prefer_nearest` restringe a escolha ao ponto mais próximo (janela de 15%). É o
+## que se quer no **balanço** — a teia pega sempre no lugar mais perto do jogador.
+## No **Web Zip** não: ali o objetivo é puxar o jogador para longe.
 func select_target(player_position: Vector3, velocity: Vector3,
-		move_direction: Vector3, camera: Camera3D, exclude: Array[RID]) -> Dictionary:
+		move_direction: Vector3, camera: Camera3D, exclude: Array[RID],
+		prefer_nearest: bool = true) -> Dictionary:
 	if _world == null:
 		return _invalid("sem mundo")
 
@@ -105,10 +120,31 @@ func select_target(player_position: Vector3, velocity: Vector3,
 	if _candidates.is_empty():
 		return _invalid("sem candidatos")
 
-	# Pontua todos e escolhe o melhor.
+	# Com `prefer_nearest`, restringe a escolha a uma janela em torno do candidato
+	# mais proximo: a teia pega **sempre no ponto mais proximo do jogador**, e os
+	# outros criterios so decidem entre pontos praticamente a mesma distancia.
+	var cutoff := INF
+	if prefer_nearest:
+		# Ponto mais proximo que ainda rende um arco util. Se houver algum na faixa
+		# ideal, restringe a escolha ao mais proximo DELES — assim a teia pega no
+		# lugar mais perto do jogador sem virar um balanco apertado de 2 m.
+		# Se nao houver nenhum (jogador encostado na parede), usa o mais proximo de
+		# qualquer forma, para o disparo nunca falhar.
+		var nearest_usable := INF
+		var nearest_any := INF
+		for candidate: Dictionary in _candidates:
+			nearest_any = minf(nearest_any, candidate["distance"])
+			if candidate["distance"] >= ideal_length_min:
+				nearest_usable = minf(nearest_usable, candidate["distance"])
+		var base := nearest_usable if nearest_usable < INF else nearest_any
+		cutoff = base * nearest_window_ratio
+
+	# Pontua so os candidatos dentro da janela e escolhe o melhor.
 	var best: Dictionary = {}
 	var best_score := -INF
 	for candidate: Dictionary in _candidates:
+		if candidate["distance"] > cutoff:
+			continue
 		var score := _score(candidate, player_position, velocity, forward, camera_forward)
 		candidate["score"] = score
 		if score > best_score:
@@ -230,6 +266,11 @@ func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
 	# Altura: o ponto precisa estar claramente acima para o arco render.
 	var high := clampf(rise / maxf(max_rise, 1.0), 0.0, 1.0)
 
+	# Proximidade: 1.0 no ponto mais perto, 0.0 no mais distante. É o critério que
+	# faz a teia pegar sempre no lugar mais próximo do jogador.
+	var proximity := 1.0 - clampf(
+		(distance - min_distance) / maxf(max_distance - min_distance, 0.001), 0.0, 1.0)
+
 	# Comprimento: 1.0 dentro da faixa ideal, caindo fora dela.
 	var length_score := 0.0
 	if distance >= ideal_length_min and distance <= ideal_length_max:
@@ -256,6 +297,7 @@ func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
 	return continuity * continuity_weight \
 		+ ahead * ahead_weight \
 		+ high * high_weight \
+		+ proximity * proximity_weight \
 		+ length_score * length_weight \
 		+ height_score * height_weight \
 		+ gain_score * gain_weight \

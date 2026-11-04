@@ -155,6 +155,37 @@ interseção de duas esferas. Hoje `fire()` só aceita um disparo por vez; habil
 o segundo é uma questão de permitir um segundo disparo, não de reescrever a
 física.
 
+## Ajustes de sensação (nov/2026)
+
+Três pedidos do responsável, todos medidos:
+
+### A teia pega sempre no ponto mais próximo
+
+Antes, a pontuação premiava "âncora à frente e longe", e o jogador encostado na
+parede ficava sem teia. Agora o `WebTargetSelector`:
+
+- varre **9×5 = 45 raios** numa abertura de 180° (antes 5×3 = 15, em 75°);
+- aceita âncora a partir de **4 m** (antes 8 m), então encostado no prédio ainda
+  há pontos válidos acima e ao lado;
+- **restringe a escolha** aos candidatos dentro de 15% do ponto mais próximo que
+  ainda renda arco (`nearest_window_ratio`). Se nenhum render arco, usa o mais
+  próximo de qualquer forma — o disparo **nunca** falha por falta de alvo.
+
+O Web Zip usa `prefer_nearest = false`: ali o objetivo é puxar o jogador para
+longe, não para a parede ao lado.
+
+### Mais longe da parede
+
+`_push_away_from_wall()` lança um raio na direção do movimento durante o balanço
+e, se achar parede perto, soma velocidade na direção da normal (para fora).
+Medido: a distância mínima à fachada subiu para **9,8 m**.
+
+### Vai mais para cima
+
+O impulso de soltura ganhou uma componente vertical **base** (`swing_kick_up_base
+= 4,5 m/s`) além da que vem da queda. Sair do ponto baixo do arco agora lança o
+jogador para cima: medido, `vy` de −1,11 → **+3,73 m/s** ao soltar.
+
 ## Limites conhecidos
 
 - **Uma teia por vez.** O segundo disparo está preparado na física, não na
