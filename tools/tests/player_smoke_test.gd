@@ -311,7 +311,10 @@ func _test_model(player: Node3D) -> void:
 	var foot_index := skeleton.find_bone("LeftFoot")
 	var facing := 0.0
 	if toe_index >= 0 and foot_index >= 0:
-		facing = skeleton.get_bone_global_pose(toe_index).origin.z - skeleton.get_bone_global_pose(foot_index).origin.z
+		# Em espaco de MUNDO: o transform do Model tem o giro de 180 graus.
+		var toe_world := skeleton.global_transform * skeleton.get_bone_global_pose(toe_index).origin
+		var foot_world := skeleton.global_transform * skeleton.get_bone_global_pose(foot_index).origin
+		facing = toe_world.z - foot_world.z
 	_check("modelo virado para a frente (-Z)", facing < 0.0, "(pe->toe z=%.3f)" % facing)
 
 	# Os clipes assados no .glb devem estar disponíveis e tocar conforme a ação.

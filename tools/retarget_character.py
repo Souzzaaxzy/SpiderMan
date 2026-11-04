@@ -141,6 +141,23 @@ def _stash(armature, action) -> None:
 
 
 def _write_pose(armature, rests, mixamo, mix_rest) -> None:
+    """Escreve a pose de um quadro copiando a orientacao MUNDIAL do Mixamo.
+
+    ## Por que copiar a orientacao mundial direto, e nao um "delta"
+
+    A tentativa anterior aplicava a **diferenca** do Mixamo sobre o nosso repouso
+    (`delta = pose_mixamo @ repouso_mixamo^-1`, `alvo = delta @ repouso_nosso`).
+    Isso so funciona quando os dois repousos sao parecidos. Nao sao: o Mixamo
+    esta em **T-pose** (bracos na horizontal) e o nosso em **A-pose** (bracos
+    caidos). Aplicar a mesma rotacao de mundo a um braco que parte de outra pose
+    jogava o braco para o lado oposto e para cima — o defeito "braco parecendo
+    asa". Medido no quadro 0 do `walking`: mao esquerda em (-0,30, 0,07, 1,24) em
+    vez de (0,27, -0,12, 0,88).
+
+    Como os dois rigs usam a mesma convencao (Z para cima, personagem encarando
+    -Y), basta **copiar a orientacao mundial** do osso do Mixamo. Medido: mao em
+    (0,29, -0,10, 0,94), praticamente igual ao Mixamo.
+    """
     for name in BONES:
         mixamo_name = _mixamo(name)
         pose_bone = armature.pose.bones.get(name)
@@ -154,8 +171,8 @@ def _write_pose(armature, rests, mixamo, mix_rest) -> None:
         rest_rel = parent_rest.inverted() @ rests[name]
         basis = (parent_world @ rest_rel).to_3x3().normalized()
 
-        delta = _mixamo_pose(mixamo, mixamo_name) @ mix_rest[mixamo_name].inverted()
-        target = delta @ rests[name].to_3x3().normalized()
+        # Alvo: a orientacao mundial exata do osso do Mixamo.
+        target = _mixamo_pose(mixamo, mixamo_name)
 
         pose_bone.rotation_mode = "QUATERNION"
         pose_bone.rotation_quaternion = (basis.inverted() @ target).to_quaternion()
