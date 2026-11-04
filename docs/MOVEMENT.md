@@ -224,3 +224,12 @@ idênticos (girando e não girando a câmera) e confirma que a diferença é nul
   velocidade de saída do chão (com 25% de folga). Antes, um pulo correndo
   atravessava 11,6 m; agora, 6,3 m. Durante o balanço o teto fica desligado, para
   não matar o ganho de velocidade da teia.
+
+## Corrida na parede e zip como disparo (nov/2026)
+
+- **Wall run**: segurando **Correr** na parede, o personagem sobe a 11 m/s (era
+  3,2 m/s), com o clipe de corrida girado para a fachada; sem Correr, escala
+  devagar. O pulo de parede agora também chuta para o lado em que ele corria.
+- **Web Zip é um DISPARO**, não um trilho: sai a **40 m/s** e desacelera até
+  16 m/s ao longo de 0,85 s (a curva do "point launch" do spiderbench). Medido:
+  pico de **35 m/s** (antes: teto lento de 26 m/s, subindo devagar).

@@ -55,14 +55,18 @@ enum WallState { NONE, CLIMBING }
 @export_group("Escalada de parede")
 ## Distância do raio que procura a parede à frente.
 @export var wall_check_distance: float = 0.9
-## Velocidade de subida na parede, em m/s.
-@export var climb_speed: float = 3.2
+## Velocidade de subida LENTA na parede (escalada), em m/s.
+@export var climb_speed: float = 3.4
+## Velocidade de subida RÁPIDA (corrida na parede) quando `Correr` está preso.
+## É o "wall run" dos jogos do Aranha: a animação de corrida girada para a
+## fachada, subindo rápido.
+@export var wall_run_speed: float = 11.0
 ## Distância mínima da parede para começar a escalar.
 @export var climb_attach_distance: float = 0.75
-## Empurrão para fora da parede ao pular da escalada.
-@export var wall_jump_push: float = 6.0
-## Subida extra no pulo de parede.
-@export var wall_jump_lift: float = 7.5
+## Empurrão para fora da parede ao pular da escalada, em m/s.
+@export var wall_jump_push: float = 8.5
+## Subida no pulo de parede, em m/s.
+@export var wall_jump_lift: float = 11.0
 
 @export_group("Rotação")
 @export var turn_speed: float = 12.0
@@ -376,9 +380,14 @@ func _climb_step(direction: Vector3, jump_pressed: bool, delta: float, grounded:
 	if normal.length() > 0.01:
 		_wall_normal = normal.normalized()
 
-	# Pular na parede solta o jogador, com um empurrão para trás e para cima.
+	# Pular na parede solta o jogador: empurrão para FORA da parede, para CIMA, e
+	# um pouco para o lado em que ele estava correndo — o pulo de parede clássico.
 	if jump_pressed:
-		velocity = _wall_normal * wall_jump_push + Vector3.UP * wall_jump_lift
+		var kick := _wall_normal * wall_jump_push + Vector3.UP * wall_jump_lift
+		if _last_direction != Vector3.ZERO:
+			var tangent := _wall_normal.cross(Vector3.UP).normalized()
+			kick += tangent * _last_direction.dot(tangent) * 4.0
+		velocity = kick
 		_end_climb()
 		move_and_slide()
 		return
@@ -387,8 +396,9 @@ func _climb_step(direction: Vector3, jump_pressed: bool, delta: float, grounded:
 	# esquerda/direita desliza pela superfície; puxar para trás (para longe da
 	# parede) desce. Sem input, sobe.
 	var right := _wall_normal.cross(Vector3.UP).normalized()
-	var lateral := direction.dot(right) * walk_speed
-	var vertical := climb_speed
+	var speed := wall_run_speed if _run_held or _sprint_held else climb_speed
+	var lateral := direction.dot(right) * speed
+	var vertical := speed
 	if direction.length() > 0.01:
 		# `_wall_normal` aponta para FORA da parede. Componente positiva = puxando
 		# para longe = descer.

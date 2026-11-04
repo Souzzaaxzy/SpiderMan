@@ -201,9 +201,10 @@ func _resolve_state() -> String:
 		if _web.is_swinging():
 			return "swing_loop"
 
-	# Escalada de parede tem prioridade sobre os estados aereos.
+	# Escalada de parede tem prioridade sobre os estados aereos. Correndo, usa o
+	# clipe de CORRIDA na parede (wall run); devagar, o de escalada.
 	if _controller.has_method("is_climbing") and _controller.is_climbing():
-		return "wall_climb"
+		return "wall_run" if _controller.current_speed() > 5.5 else "wall_climb"
 
 	if not _controller.is_grounded():
 		if _airborne_time < fall_delay:

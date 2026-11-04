@@ -293,6 +293,28 @@ func _test_wall_climb() -> void:
 			"(vy=%.1f)" % _player.velocity.y)
 	_player.set_move_vector(Vector2.ZERO)
 
+	# Correndo na parede: sobe mais rapido (wall run) e a animacao acompanha.
+	if climbed:
+		_player.global_position = approach
+		_player.velocity = Vector3.ZERO
+		await _wait(5)
+		_player.set_run_held(true)
+		_player.set_move_vector(Vector2(1.0 if to_wall.x > 0.0 else -1.0, 0))
+		_player.velocity = to_wall * 6.0 + Vector3(0.0, -3.0, 0.0)
+		var fast_y := 0.0
+		var started := false
+		for _step in 90:
+			await physics_frame
+			if _player.is_climbing():
+				if not started:
+					started = true
+					fast_y = _player.global_position.y
+		_check("correndo na parede sobe mais rapido (wall run)",
+			started and _player.global_position.y - fast_y > 3.0,
+			"(subiu %.1f m)" % (_player.global_position.y - fast_y))
+		_player.set_run_held(false)
+		_player.set_move_vector(Vector2.ZERO)
+
 
 # --- 5. Teias entre os edifícios ---
 

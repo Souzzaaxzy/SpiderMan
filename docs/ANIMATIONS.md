@@ -175,3 +175,17 @@ afastadas. Medido: a abertura entre os pés chegava a **0,87 m**; agora é
 **0,20 m** (e o pico é só a pose de impulso).
 
 Cobertura: **18 de 21** estados com clipe próprio (antes 13).
+
+## Escalada, corrida na parede e zip (nov/2026)
+
+Três clipes refeitos/gerei por **pose procedural** (`tools/add_generated_clips.py`),
+usando os eixos medidos no rig (o corpo encara -Y):
+
+- **`wall_climb`** — membros alternando contra a fachada: o braço que alcança vai
+  mais alto e mais esticado, a perna oposta dobra. Antes as pernas mal se moviam
+  (amplitude ~0,02 m); agora alternam de verdade.
+- **`wall_jump`** — sai do apoio e abre para a pose de salto no ar.
+- **`web_zip`** — os dois braços à frente, corpo esticado na direção do voo
+  (antes caía no `swing_start`).
+
+Cobertura: **19 de 21** estados com clipe próprio (faltam só `web_shoot_l/r`).

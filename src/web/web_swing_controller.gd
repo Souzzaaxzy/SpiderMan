@@ -48,8 +48,17 @@ const MAX_ROPE_LENGTH := 60.0
 const REEL_RATE := 7.0
 
 @export_group("Web Zip")
-## Velocidade máxima do impulso, em m/s.
-@export var zip_max_speed: float = 26.0
+## Velocidade de PICO no arranque do zip, em m/s. O zip é um disparo: sai rápido
+## e desacelera até a velocidade de cruzeiro. (Referência do spiderbench: 46.)
+@export var zip_burst_speed: float = 40.0
+## Velocidade de cruzeiro, no fim do disparo, em m/s.
+@export var zip_cruise_speed: float = 16.0
+## Duração do disparo, em segundos.
+@export var zip_duration: float = 0.85
+## Quão rápido a velocidade se aproxima do perfil (1/s). Alto = arranque seco.
+@export var zip_ramp_rate: float = 18.0
+## Velocidade máxima do impulso, em m/s (teto de segurança).
+@export var zip_max_speed: float = 46.0
 ## Aceleração do impulso, em m/s². É o que dá a sensação de "puxada".
 @export var zip_acceleration: float = 55.0
 ## Distância em que o impulso termina sozinho.
@@ -127,8 +136,9 @@ var _last_score: float = 0.0
 var _swing_time: float = 0.0
 var _swing_angle_start: float = 0.0
 
-## Alvo do Web Zip.
+## Alvo do Web Zip, e tempo desde o disparo.
 var _zip_target: Vector3 = Vector3.ZERO
+var _zip_time: float = 0.0
 var _zip_requested: bool = false
 ## Movimento desejado pelo jogador, para a seleção de alvo.
 var _desired_direction: Vector3 = Vector3.ZERO
@@ -363,6 +373,7 @@ func zip() -> bool:
 		return false
 
 	_zip_target = choice["position"]
+	_zip_time = 0.0
 	_state = State.ZIPPING
 	_controller.swing_active = true
 	if _visual != null:
@@ -631,13 +642,23 @@ func _step_swing_position(delta: float) -> bool:
 
 
 ## Impulso do Web Zip: aceleração contínua na direção do alvo.
+## Impulso do Web Zip: um DISPARO, não um trilho.
+##
+## O zip sai rápido (pico de `zip_burst_speed`) e desacelera até
+## `zip_cruise_speed` ao longo de `zip_duration` — a mesma curva do "point
+## launch" do spiderbench. A direção vem do alvo, e a velocidade lateral é
+## apenas amortecida, preservando a inércia em vez de transformar o zip num
+## trilho. Termina ao chegar perto do alvo ou ao fim da duração.
 func _step_zip(delta: float) -> bool:
 	if _state != State.ZIPPING:
 		return false
 
+	_zip_time += delta
+	var u := clampf(_zip_time / maxf(zip_duration, 0.01), 0.0, 1.0)
+
 	var to_target := _zip_target - body_position()
 	var distance := to_target.length()
-	if distance < zip_arrival_distance:
+	if distance < zip_arrival_distance or u >= 1.0:
 		_finish_zip()
 		return false
 
@@ -645,19 +666,18 @@ func _step_zip(delta: float) -> bool:
 	var velocity := _controller.velocity
 
 	# Separa a velocidade em "na direção do alvo" e "lateral". A puxada só
-	# acelera a primeira; a lateral é amortecida, não zerada — é o que preserva
-	# a inércia em vez de transformar o zip num trilho.
+	# acelera a primeira; a lateral é amortecida, não zerada.
 	var along := direction * velocity.dot(direction)
 	var lateral := velocity - along
 	lateral *= maxf(0.0, 1.0 - (1.0 - zip_lateral_keep) * delta * 4.0)
 
+	# Perfil de velocidade do disparo: pico no arranque, caindo para o cruzeiro.
+	var profile := lerpf(zip_burst_speed, zip_cruise_speed, u * u * (3.0 - 2.0 * u))
+	profile = minf(profile, zip_max_speed)
 	var along_speed := along.length()
-	var target_speed := minf(along_speed + zip_acceleration * delta, zip_max_speed)
-	var new_velocity := direction * target_speed + lateral
+	var new_along := lerpf(along_speed, profile, clampf(zip_ramp_rate * delta, 0.0, 1.0))
 
-	# A direção do alvo é considerada "para fora" da corda: o zip puxa, então a
-	# componente de afastamento é preservada aqui (não é uma corda esticada).
-	_controller.velocity = WebPhysics.clamp_speed(new_velocity)
+	_controller.velocity = WebPhysics.clamp_speed(direction * new_along + lateral)
 	_controller.swing_active = true
 	return true
 

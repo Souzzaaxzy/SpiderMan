@@ -118,6 +118,27 @@ def _legs(armature, bend: float, apart: float, thigh: float = 0.0) -> None:
     _rotate(armature, "RightLeg", Vector((1, 0, 0)), -bend * DEG)
 
 
+def _reach(armature, side: str, up_deg: float, out_deg: float, elbow_deg: float) -> None:
+    """Braco para CIMA/FRENTE (agarrando a parede).
+
+    Eixos medidos no rig: `X` negativo levanta o braco para a FRENTE (o corpo
+    encara -Y), `Y` negativo afasta o braco esquerdo do corpo (e positivo o
+    direito), `X` negativo do antebraco dobra o cotovelo.
+    """
+    sign = 1.0 if side == "Left" else -1.0
+    _rotate(armature, side + "Arm", Vector((1, 0, 0)), -up_deg * DEG)
+    _rotate(armature, side + "Arm", Vector((0, 1, 0)), -sign * out_deg * DEG)
+    _rotate(armature, side + "ForeArm", Vector((1, 0, 0)), -elbow_deg * DEG)
+
+
+def _step(armature, side: str, thigh_deg: float, knee_deg: float, out_deg: float) -> None:
+    """Perna apoiada/empurrando: `thigh` levanta o joelho, `knee` dobra, `out` afasta."""
+    sign = 1.0 if side == "Left" else -1.0
+    _rotate(armature, side + "UpLeg", Vector((1, 0, 0)), thigh_deg * DEG)
+    _rotate(armature, side + "UpLeg", Vector((0, 1, 0)), sign * out_deg * DEG)
+    _rotate(armature, side + "Leg", Vector((1, 0, 0)), -knee_deg * DEG)
+
+
 def build_fall(armature, length: int = 40) -> None:
     """Queda: braços meio abertos para cima, pernas juntas e levemente dobradas."""
     action = _new_action(armature, "fall")
@@ -174,43 +195,69 @@ def build_air_move(armature, length: int = 32) -> None:
 
 
 def build_wall_climb(armature, length: int = 48) -> None:
-    """Escalada: braços e pernas alternando, como quem sobe uma parede.
+    """Escalada: membros alternando contra a parede, corpo colado nela.
 
-    O personagem encara a parede (frente em -Y), entao os membros vao para a
-    frente (-Y) alternadamente.
+    O personagem encara a parede (frente em -Y). Cada lado avanca enquanto o
+    outro apoia — o ciclo classico de escalar. Braco alto com cotovelo dobrado,
+    perna oposta com joelho bem flexionado.
     """
     action = _new_action(armature, "wall_climb")
     for step in range(length + 1):
         phase = (step / float(length)) * math.tau
         _reset(armature)
-        # Braços: um sobe enquanto o outro desce.
-        left = 70.0 + math.sin(phase) * 30.0
-        right = 70.0 - math.sin(phase) * 30.0
-        _arms(armature, left, right, 30.0, 30.0)
-        # Pernas: alternam, com o joelho bem dobrado.
-        left_thigh = 30.0 + math.sin(phase + math.pi) * 22.0
-        right_thigh = 30.0 - math.sin(phase + math.pi) * 22.0
-        _rotate(armature, "LeftUpLeg", Vector((1, 0, 0)), left_thigh * DEG)
-        _rotate(armature, "RightUpLeg", Vector((1, 0, 0)), right_thigh * DEG)
-        _rotate(armature, "LeftLeg", Vector((1, 0, 0)), -55.0 * DEG)
-        _rotate(armature, "RightLeg", Vector((1, 0, 0)), -55.0 * DEG)
-        _rotate(armature, "Spine1", Vector((1, 0, 0)), 6.0 * DEG)
+        reach = math.sin(phase)            # +1: lado esquerdo alcanca
+        # Bracos: o que alcanca vai mais alto e mais esticado.
+        _reach(armature, "Left", 118.0 + reach * 26.0, 12.0, 44.0 - reach * 22.0)
+        _reach(armature, "Right", 118.0 - reach * 26.0, 12.0, 44.0 + reach * 22.0)
+        # Pernas: opostas aos bracos, joelho bem dobrado.
+        _step(armature, "Left", 34.0 - reach * 22.0, 62.0 + reach * 14.0, 6.0)
+        _step(armature, "Right", 34.0 + reach * 22.0, 62.0 - reach * 14.0, 6.0)
+        # Tronco levemente colado a parede, cabeca olhando para cima.
+        _rotate(armature, "Spine1", Vector((1, 0, 0)), 10.0 * DEG)
+        _rotate(armature, "Neck", Vector((1, 0, 0)), -14.0 * DEG)
         _keyframe(armature, 1 + step)
     action.use_fake_user = True
     _stash(armature, action)
 
 
 def build_wall_jump(armature, length: int = 24) -> None:
-    """Pulo de parede: empurra para longe, braços abrem, pernas se esticam."""
+    """Pulo de parede: empurra para longe dela, corpo abrindo e esticando."""
     action = _new_action(armature, "wall_jump")
     for step in range(length + 1):
         t = step / float(length)
         _reset(armature)
-        # Abre do agachamento para o corpo esticado.
-        spread = 30.0 + t * 30.0
-        _arms(armature, spread, spread, -10.0, 10.0 * (1.0 - t))
-        _legs(armature, 40.0 * (1.0 - t), 8.0 * (1.0 - t))
-        _rotate(armature, "Spine1", Vector((1, 0, 0)), (12.0 * (1.0 - t)) * DEG)
+        # Sai do apoio (bracos altos) e abre para a pose de salto no ar.
+        _reach(armature, "Left", 118.0 * (1.0 - t) + 40.0 * t, 12.0 + 40.0 * t, 44.0 * (1.0 - t))
+        _reach(armature, "Right", 118.0 * (1.0 - t) + 40.0 * t, 12.0 + 40.0 * t, 44.0 * (1.0 - t))
+        _step(armature, "Left", 34.0 * (1.0 - t) + 6.0 * t, 62.0 * (1.0 - t) + 8.0 * t, 6.0)
+        _step(armature, "Right", 34.0 * (1.0 - t) + 6.0 * t, 62.0 * (1.0 - t) + 8.0 * t, 6.0)
+        _rotate(armature, "Spine1", Vector((1, 0, 0)), (10.0 * (1.0 - t) - 6.0 * t) * DEG)
+        _rotate(armature, "Neck", Vector((1, 0, 0)), (-14.0 * (1.0 - t)) * DEG)
+        _keyframe(armature, 1 + step)
+    action.use_fake_user = True
+    _stash(armature, action)
+
+
+def build_web_zip(armature, length: int = 26) -> None:
+    """Tiro de teia que PUXA o jogador: os dois bracos a frente, corpo esticado.
+
+    E a pose do `zipFlight` do spiderbench: corpo alinhado na direcao do voo,
+    bracos estendidos para o alvo, pernas juntas e esticadas para tras.
+    """
+    action = _new_action(armature, "web_zip")
+    for step in range(length + 1):
+        t = step / float(length)
+        _reset(armature)
+        # Impulso inicial (bracos para frente) e depois voo esticado.
+        punch = 1.0 - t
+        _reach(armature, "Left", 78.0 + punch * 12.0, 8.0, 24.0 - punch * 18.0)
+        _reach(armature, "Right", 78.0 + punch * 12.0, 8.0, 24.0 - punch * 18.0)
+        # Pernas juntas, esticadas levemente para tras.
+        _step(armature, "Left", -8.0 - punch * 6.0, 10.0, 2.0)
+        _step(armature, "Right", -8.0 - punch * 6.0, 10.0, 2.0)
+        _rotate(armature, "Spine1", Vector((1, 0, 0)), 14.0 * DEG)
+        _rotate(armature, "Spine2", Vector((1, 0, 0)), 6.0 * DEG)
+        _rotate(armature, "Neck", Vector((1, 0, 0)), -10.0 * DEG)
         _keyframe(armature, 1 + step)
     action.use_fake_user = True
     _stash(armature, action)
@@ -228,14 +275,14 @@ def main(argv: list[str]) -> int:
     our_meshes = [o.name for o in bpy.data.objects if o.type == "MESH"]
 
     # Remove as actions que vamos regerar (se ja existirem).
-    for name in ["fall", "air_move", "wall_climb", "wall_jump", "jump_loop"]:
+    for name in ["fall", "air_move", "wall_climb", "wall_jump", "jump_loop", "web_zip"]:
         existing = bpy.data.actions.get(name)
         if existing is not None:
             bpy.data.actions.remove(existing)
     # Limpa as NLA tracks antigas desses nomes.
     if armature.animation_data:
         for track in list(armature.animation_data.nla_tracks):
-            if track.name in ["fall", "air_move", "wall_climb", "wall_jump", "jump_loop"]:
+            if track.name in ["fall", "air_move", "wall_climb", "wall_jump", "jump_loop", "web_zip"]:
                 armature.animation_data.nla_tracks.remove(track)
 
     build_fall(armature)
@@ -243,7 +290,8 @@ def main(argv: list[str]) -> int:
     build_air_move(armature)
     build_wall_climb(armature)
     build_wall_jump(armature)
-    print("clipes gerados: fall, jump_loop, air_move, wall_climb, wall_jump")
+    build_web_zip(armature)
+    print("clipes gerados: fall, jump_loop, air_move, wall_climb, wall_jump, web_zip")
 
     # Remove malhas de bone-shape do import, se houver.
     keep = set(our_meshes) | {armature.name}

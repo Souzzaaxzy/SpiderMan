@@ -388,6 +388,9 @@ func _test_zip() -> void:
 		"(maior salto %.4f m)" % max_jump)
 	_check("acelerou na direcao do alvo", speed_peak > 3.0,
 		"(pico %.1f m/s)" % speed_peak)
+	# O zip e um DISPARO: pico alto no arranque, nao um trilho lento.
+	_check("zip dispara em alta velocidade", speed_peak > 20.0,
+		"(pico %.1f m/s)" % speed_peak)
 
 	# 17. Colisões durante o impulso: não atravessa prédio.
 	var inside := await _count_inside_building(40)

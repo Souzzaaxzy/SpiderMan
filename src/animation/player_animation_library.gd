@@ -51,7 +51,7 @@ const AVAILABLE_CLIPS: Array[StringName] = [
 	&"standing_jump", &"falling_to_landing", &"land_roll",
 	&"swing_start", &"swing_loop", &"swing_release", &"swing_to_land",
 	&"swing_into_wall", &"wall_run", &"low_crawl",
-	&"fall", &"jump_loop", &"air_move", &"wall_climb", &"wall_jump",
+	&"fall", &"jump_loop", &"air_move", &"wall_climb", &"wall_jump", &"web_zip",
 ]
 
 ## Alternativa usada quando o clipe ideal não existe.
@@ -62,7 +62,7 @@ const FALLBACKS := {
 	"air_move": "air_move",
 	"web_shoot_l": "swing_start",
 	"web_shoot_r": "swing_start",
-	"web_zip": "swing_start",
+	"web_zip": "web_zip",
 	"wall_climb": "wall_climb",
 	"wall_jump": "wall_jump",
 }
