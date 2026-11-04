@@ -211,3 +211,16 @@ idênticos (girando e não girando a câmera) e confirma que a diferença é nul
   usam alternativa; a mecânica em si não foi implementada.
 - **Point Launch não implementado**, só preparado.
 - **FPS no Galaxy A14 não medido** — não há aparelho físico neste ambiente.
+
+## Pulo duplo, escalada de parede e controle aéreo (nov/2026)
+
+- **Pulo duplo**: sem botão novo. Apertar **pular de novo no ar** dá um segundo
+  impulso (medido: ápice de 1,86 m no simples contra 2,91 m no duplo).
+- **Escalada de parede**: sem botão novo. **Pular contra a parede no ar** agarra e
+  sobe (medido: 3,9 m numa fachada). **Pular de novo** solta com um pulo de
+  parede (empurrão para trás e para cima). Ao chegar no topo, solta sozinho.
+  O joystick esquerda/direita desliza pela superfície; puxar para trás desce.
+- **Controle aéreo**: no ar o jogador **não ganha velocidade nova** — o teto é a
+  velocidade de saída do chão (com 25% de folga). Antes, um pulo correndo
+  atravessava 11,6 m; agora, 6,3 m. Durante o balanço o teto fica desligado, para
+  não matar o ganho de velocidade da teia.

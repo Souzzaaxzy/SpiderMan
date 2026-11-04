@@ -162,3 +162,16 @@ As animações vêm do **Mixamo** (Adobe). O uso é gratuito para projetos, com 
 restrições da licença Adobe: não redistribuir os arquivos como asset isolado.
 Os FBX originais ficam em `assets/animations/mixamo/`; o que entra no jogo é o
 resultado do retargeting, assado no `.glb`.
+
+## Clipes gerados (nov/2026)
+
+O pacote do Mixamo não trouxe `fall`, `jump_loop`, `air_move`, `wall_climb` nem
+`wall_jump`. Eles são gerados por **pose procedural**
+(`tools/add_generated_clips.py`) e adicionados ao `.glb` sem mexer nos outros.
+
+Isso resolveu o defeito de o personagem abrir as pernas "como prancha" no ar: o
+estado aéreo caía no `standing_jump`, que tem pose de agachamento com as pernas
+afastadas. Medido: a abertura entre os pés chegava a **0,87 m**; agora é
+**0,20 m** (e o pico é só a pose de impulso).
+
+Cobertura: **18 de 21** estados com clipe próprio (antes 13).
