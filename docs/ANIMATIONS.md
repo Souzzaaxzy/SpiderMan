@@ -28,12 +28,37 @@ Estado real das animações, sem maquiagem.
 | `wall_run` | Wall Run.fbx |
 | `low_crawl` | Low Crawl.fbx |
 
-## Como o retargeting foi feito
+## Como o retargeting foi feito (reescrito em nov/2026)
 
-O rig é *Rigify em modo IK*: os ossos que **deformam a malha** são
-`thigh_stretch.l`, `leg_twist_2.l`, `foot.l`, `arm_stretch.l`,
-`forearm_twist_2.l` — nenhum deles se chamaria "coxa" ou "braço". Quem manda
-neles são as **279 constraints**, a partir dos alvos IK.
+O rig é *Rigify*: os ossos que **deformam a malha** são `thigh_stretch.l`,
+`leg_stretch.l`, `foot.l`, `arm_stretch.l`, `forearm_stretch.l` — nenhum deles se
+chamaria "coxa" ou "braço". Quem manda neles são as **279 constraints**, a partir
+dos controles.
+
+### Por que as versões anteriores deixavam o corpo dobrado
+
+1. **Hierarquia partida.** No rig, os ossos de deformação **não são filhos uns
+   dos outros**: `leg_stretch.l` é filho de `c_traj` (a raiz do rig), não de
+   `thigh_stretch.l`. Sem as constraints, girar a coxa **não movia a perna**.
+   Medido: o pé ia parar na **altura do peito** (z = 1,15 a 1,39 m no `walking`;
+   1,6 a 2,3 m no `jog`). Era esse o "personagem todo bugado" — pernas dentro da
+   barriga, braços na altura da cabeça, corpo flutuando.
+2. **Espaço de coordenadas.** O armature do Mixamo está rotacionado 90° em X e
+   com escala 0,01.
+
+### O método que funciona
+
+1. **Reconstruir a hierarquia** de deformação como uma cadeia humana limpa
+   (`root → spine → shoulder → arm → forearm → hand`; `root → thigh → leg → foot
+   → toes`). O reparenting **não altera** o `matrix_local`, então o bind da malha
+   continua correto.
+2. Copiar a **diferença de orientação** do Mixamo sobre o nosso repouso:
+   `delta = pose_mixamo · repouso_mixamo⁻¹` e `alvo = delta · repouso_nosso`.
+   Nessa forma as matrizes de espaço se cancelam.
+3. Assar a pose avaliada em chaves.
+
+Medido com o método novo (`walking`): pé alternando **0,09 a 0,39 m** do chão,
+mãos caídas a ~1,1 m, cabeça estável a 1,85 m, corpo com 2,07 m de altura.
 
 Duas tentativas falharam, e as duas foram medidas:
 

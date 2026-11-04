@@ -57,23 +57,22 @@ extends Node3D
 @export var scan_pitch_high: float = 60.0
 
 @export_group("Pontuação")
-## Janela de distância em torno do candidato mais próximo. Só candidatos até
-## `mais_proximo * nearest_window_ratio` concorrem: garante que a teia pegue no
-## ponto mais próximo, deixando a forma (altura, continuidade) desempatar.
-@export var nearest_window_ratio: float = 1.15
-## Peso da proximidade. DOMINANTE de propósito: o jogador quer que a teia pegue
-## sempre no ponto mais próximo dele. Os outros termos só desempatam.
-@export var proximity_weight: float = 2.5
-## Continuidade: a âncora está à frente do movimento? Peso moderado, para não
-## contrariar a proximidade.
-@export var continuity_weight: float = 0.45
-## Âncora "à frente e longe". Peso baixo: a proximidade manda.
-@export var ahead_weight: float = 0.45
-## Peso da altura do ponto.
-@export var high_weight: float = 0.45
-@export var length_weight: float = 0.35
-@export var height_weight: float = 0.25
-@export var gain_weight: float = 0.15
+## Peso da CONTINUIDADE: a âncora está à frente do movimento? É o critério que
+## faz o balanço render deslocamento em vez de puxar o jogador para trás.
+@export var continuity_weight: float = 1.5
+## Âncora à frente e longe.
+@export var ahead_weight: float = 1.0
+## Peso da ALTURA: a teia sobe para o alto do prédio, não para a parede ao lado.
+@export var high_weight: float = 4.0
+## Ganho de altura: o arco passa por baixo e sobe do outro lado?
+@export var gain_weight: float = 0.5
+## Faixa de comprimento ideal.
+@export var length_weight: float = 0.5
+## Altura relativa na faixa.
+@export var height_weight: float = 0.3
+## Peso da proximidade. Baixo: a teia não deve grudar no ponto mais perto, e sim
+## subir. A proximidade só desempata entre pontos igualmente altos.
+@export var proximity_weight: float = 0.2
 ## Peso da câmera. Baixo de propósito: só desempata.
 @export var camera_weight: float = 0.12
 
@@ -99,15 +98,8 @@ func _ready() -> void:
 ## `move_direction` é para onde o jogador está indo (ou quer ir). `camera` só
 ## influencia levemente. Devolve `{valid, position, score, reason, candidates}`.
 ##
-## `prefer_nearest` restringe a escolha ao ponto mais próximo (janela de 15%). É o
-## que se quer no **balanço** — a teia pega sempre no lugar mais perto do jogador.
-## No **Web Zip** não: ali o objetivo é puxar o jogador para longe.
 func select_target(player_position: Vector3, velocity: Vector3,
-		move_direction: Vector3, camera: Camera3D, exclude: Array[RID],
-		prefer_nearest: bool = true) -> Dictionary:
-	if _world == null:
-		return _invalid("sem mundo")
-
+		move_direction: Vector3, camera: Camera3D, exclude: Array[RID]) -> Dictionary:
 	var forward := _resolve_forward(velocity, move_direction, camera)
 	var eye := player_position + Vector3(0.0, eye_height, 0.0)
 	var camera_forward := Vector3.ZERO
@@ -120,37 +112,26 @@ func select_target(player_position: Vector3, velocity: Vector3,
 	if _candidates.is_empty():
 		return _invalid("sem candidatos")
 
-	# Com `prefer_nearest`, restringe a escolha a uma janela em torno do candidato
-	# mais proximo: a teia pega **sempre no ponto mais proximo do jogador**, e os
-	# outros criterios so decidem entre pontos praticamente a mesma distancia.
-	var cutoff := INF
-	if prefer_nearest:
-		# Ponto mais proximo que ainda rende um arco util. Se houver algum na faixa
-		# ideal, restringe a escolha ao mais proximo DELES — assim a teia pega no
-		# lugar mais perto do jogador sem virar um balanco apertado de 2 m.
-		# Se nao houver nenhum (jogador encostado na parede), usa o mais proximo de
-		# qualquer forma, para o disparo nunca falhar.
-		var nearest_usable := INF
-		var nearest_any := INF
-		for candidate: Dictionary in _candidates:
-			nearest_any = minf(nearest_any, candidate["distance"])
-			if candidate["distance"] >= ideal_length_min:
-				nearest_usable = minf(nearest_usable, candidate["distance"])
-		var base := nearest_usable if nearest_usable < INF else nearest_any
-		cutoff = base * nearest_window_ratio
-
-	# Pontua so os candidatos dentro da janela e escolhe o melhor.
+	# Prefere ancoras A FRENTE do movimento: prender atras puxa o jogador para
+	# tras e mata o impulso. Se nao houver nenhuma a frente (encostado na parede),
+	# considera todas para o disparo nunca falhar.
+	var ahead_only: Array[Dictionary] = []
+	for candidate: Dictionary in _candidates:
+		var to_anchor: Vector3 = candidate["position"] - player_position
+		var flat := Vector3(to_anchor.x, 0.0, to_anchor.z)
+		if flat.length() > 0.01 and forward.dot(flat.normalized()) > 0.0:
+			ahead_only.append(candidate)
+	var pool: Array[Dictionary] = ahead_only if not ahead_only.is_empty() else _candidates
+	# Entre as ancoras a frente, escolhe a MAIS ALTA: a teia sobe para o alto do
+	# predio, nao para o ponto baixo da parede ao lado.
 	var best: Dictionary = {}
 	var best_score := -INF
-	for candidate: Dictionary in _candidates:
-		if candidate["distance"] > cutoff:
-			continue
+	for candidate: Dictionary in pool:
 		var score := _score(candidate, player_position, velocity, forward, camera_forward)
 		candidate["score"] = score
 		if score > best_score:
 			best_score = score
 			best = candidate
-
 	if best.is_empty():
 		return _invalid("nenhum candidato valido")
 
@@ -264,7 +245,7 @@ func _score(candidate: Dictionary, player_position: Vector3, velocity: Vector3,
 		# Quanto mais alinhado com a frente e quanto mais longe, melhor.
 		ahead = clampf(along / maxf(ideal_length_max, 1.0), 0.0, 1.0) * (1.0 - lateral)
 	# Altura: o ponto precisa estar claramente acima para o arco render.
-	var high := clampf(rise / maxf(max_rise, 1.0), 0.0, 1.0)
+	var high := clampf(rise / 25.0, 0.0, 1.0)
 
 	# Proximidade: 1.0 no ponto mais perto, 0.0 no mais distante. É o critério que
 	# faz a teia pegar sempre no lugar mais próximo do jogador.

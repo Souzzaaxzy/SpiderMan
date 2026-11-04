@@ -226,39 +226,33 @@ func _test_target_selection() -> void:
 			"(componente x=%.2f)" % flat.x)
 
 	# 6. Perto da parede: a teia precisa pegar. Antes, encostado no prédio o disparo
-	# falhava ("estou do lado do prédio e a teia não pega"). Agora ancora de perto e
-	# escolhe o ponto mais PRÓXIMO do jogador.
+	# falhava ("estou do lado do prédio e a teia não pega").
 	for offset in [12.0, 8.0, 5.0, 3.0, 1.5]:
 		await _reset(Vector3(-26.0 - offset, 1.2, -146.6), 90.0)
 		var near_fired: bool = _web.fire()
 		_check("ancora encostado na parede (offset=%.1f m)" % offset, near_fired)
 		if near_fired:
 			var near_anchor: Vector3 = _web.current_anchor()
-			var near_dist: float = _player.global_position.distance_to(near_anchor)
-			_check("ancora perto fica a menos de 30 m (offset=%.1f)" % offset, near_dist < 30.0,
-				"(%.1f m)" % near_dist)
+			_check("ancora sobe acima do jogador (offset=%.1f)" % offset,
+				near_anchor.y > _player.global_position.y + 3.0,
+				"(ancora y=%.1f, jogador y=%.1f)" % [near_anchor.y, _player.global_position.y])
 			_web.release()
 		await _wait(10)
 
-	# 7. A ancoragem escolhida é a mais próxima entre os candidatos válidos.
+	# 7. A ancoragem escolhida e ALTA: a teia vai para o alto do predio, nao para o
+	# ponto baixo da parede ao lado (pedido do responsavel).
 	await _reset(Vector3(-26.0 - 6.0, 1.2, -146.6), 90.0)
 	var exclude2: Array[RID] = [_player.get_rid()]
 	var pick: Dictionary = _selector.select_target(_player.global_position, Vector3.ZERO,
 		Vector3.RIGHT, _camera, exclude2)
 	if pick["valid"]:
-		var chosen_dist: float = _player.global_position.distance_to(pick["position"])
-		# A regra: entre os candidatos que rendem arco (distancia >= faixa ideal),
-		# escolhe o mais proximo. Sem nenhum na faixa, usa o mais proximo de todos.
-		var nearest_usable := INF
-		var nearest_any := INF
+		var chosen_rise: float = pick["position"].y - _player.global_position.y
+		var highest_rise := 0.0
 		for cand: Dictionary in pick["candidates"]:
-			nearest_any = minf(nearest_any, cand["distance"])
-			if cand["distance"] >= 14.0:
-				nearest_usable = minf(nearest_usable, cand["distance"])
-		var expected := nearest_usable if nearest_usable < INF else nearest_any
-		_check("ancora escolhida e a mais proxima com arco util",
-			chosen_dist <= expected * 1.15 + 0.5,
-			"(escolhida=%.1f, esperada<=%.1f)" % [chosen_dist, expected * 1.15])
+			highest_rise = maxf(highest_rise, cand["rise"])
+		_check("ancora escolhida e alta (sobe no predio)",
+			chosen_rise > highest_rise * 0.5 and chosen_rise > 8.0,
+			"(escolhida sobe %.1f m, mais alta sobe %.1f m)" % [chosen_rise, highest_rise])
 
 	# 6. Sem alvos: já coberto acima.
 

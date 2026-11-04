@@ -287,11 +287,9 @@ func zip() -> bool:
 		return false
 
 	var exclude: Array[RID] = [_controller.get_rid()]
-	# No zip NAO queremos o ponto mais proximo: o objetivo e puxar o jogador para
-	# longe. `prefer_nearest = false` libera o alvo alto e distante.
 	var choice := _selector.select_target(
 		_controller.global_position, _controller.velocity, _desired_direction,
-		_camera, exclude, false)
+		_camera, exclude)
 	if not choice["valid"]:
 		return false
 

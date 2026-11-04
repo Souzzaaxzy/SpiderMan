@@ -159,20 +159,22 @@ física.
 
 Três pedidos do responsável, todos medidos:
 
-### A teia pega sempre no ponto mais próximo
+### A teia vai para o ALTO do prédio, e sempre pega
 
-Antes, a pontuação premiava "âncora à frente e longe", e o jogador encostado na
-parede ficava sem teia. Agora o `WebTargetSelector`:
+Dois problemas relatados: "a teia não pega quando estou do lado do prédio" e
+"era pra estar indo lá em cima". Agora o `WebTargetSelector`:
 
 - varre **9×5 = 45 raios** numa abertura de 180° (antes 5×3 = 15, em 75°);
 - aceita âncora a partir de **4 m** (antes 8 m), então encostado no prédio ainda
   há pontos válidos acima e ao lado;
-- **restringe a escolha** aos candidatos dentro de 15% do ponto mais próximo que
-  ainda renda arco (`nearest_window_ratio`). Se nenhum render arco, usa o mais
-  próximo de qualquer forma — o disparo **nunca** falha por falta de alvo.
+- **só considera âncoras à frente do movimento**; se não houver nenhuma
+  (encostado na parede), considera todas — o disparo **nunca** falha por falta de
+  alvo;
+- entre as âncoras à frente, **prefere a mais alta** (`high_weight = 4.0`): a teia
+  sobe para o alto do prédio, não para o ponto baixo da parede ao lado.
 
-O Web Zip usa `prefer_nearest = false`: ali o objetivo é puxar o jogador para
-longe, não para a parede ao lado.
+Medido no teste: a âncora escolhida fica **15,9 m acima** do jogador e à frente
+(componente x = 1,00).
 
 ### Mais longe da parede
 
